@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 
 import { Button } from "@/components/ui/button";
@@ -10,10 +11,37 @@ import {
   Clock, AlertTriangle, CheckCircle, Users
 } from "lucide-react";
 
+// Type for backend response
+interface RecentMentionsResponse {
+  posts: any[];
+  average_sentiment: number;
+}
+
 const SentimentMonitor = () => {
   const [selectedSubreddit, setSelectedSubreddit] = useState("all");
   const [sentimentFilter, setSentimentFilter] = useState("all");
-  const [recentMentions, setRecentMentions] = useState<any[]>([]);
+  const [flaggedIds, setFlaggedIds] = useState<string[]>([]);
+  const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
+
+  const recentMentionsQuery = useQuery<RecentMentionsResponse>({
+    queryKey: ["recentMentions"],
+    queryFn: async () => {
+      const res = await axios.get("http://localhost:8000/recent-mentions");
+      return res.data as RecentMentionsResponse;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+  const recentMentions = recentMentionsQuery.data?.posts ?? [];
+  const average_sentiment = recentMentionsQuery.data?.average_sentiment ?? 0;
+  const isLoading = recentMentionsQuery.isLoading;
+  const error = recentMentionsQuery.error;
+
+  // Fetch flagged IDs from backend
+  useEffect(() => {
+    axios.get<string[]>("http://localhost:8000/flagged")
+      .then(res => setFlaggedIds(res.data))
+      .catch(() => setFlaggedIds([]));
+  }, []);
 
   // Compute monitored subreddits dynamically from recentMentions
   const monitoredSubreddits = Object.values(
@@ -26,21 +54,6 @@ const SentimentMonitor = () => {
       return acc;
     }, {} as Record<string, { name: string; mentions: number }>)
   ) as Array<{ name: string; mentions: number }>;
-
-  useEffect(() => {
-    axios.get<any[]>("http://localhost:8000/recent-mentions")
-      .then(res => {
-        const mentions = Array.isArray(res.data) ? res.data : [];
-        console.log("Backend mentions:", mentions);
-        mentions.forEach((m, i) => {
-          console.log(`Mention ${i}: id=${m.id}, subreddit=${m.subreddit}, title=${m.title}`);
-        });
-        setRecentMentions(mentions);
-      })
-      .catch(err => {
-        console.error("Failed to fetch recent mentions:", err);
-      });
-  }, []);
 
   const getSentimentColor = (sentiment: string, score: number) => {
     if (sentiment === "positive") return "text-success";
@@ -63,26 +76,49 @@ const SentimentMonitor = () => {
   };
 
   const filteredMentions = recentMentions.filter((mention) => {
-    const subredditMatches = selectedSubreddit === "all" || mention.subreddit.toLowerCase().includes(selectedSubreddit.toLowerCase());
-    const sentimentMatches = sentimentFilter === "all" || mention.sentiment === sentimentFilter;
+    const subredditMatches =
+      selectedSubreddit === "all" ||
+      mention.subreddit.toLowerCase() === `r/${selectedSubreddit}`.toLowerCase();
+    const sentimentMatches =
+      sentimentFilter === "all" || mention.sentiment === sentimentFilter;
     return subredditMatches && sentimentMatches;
   });
+
+  // Reset selectedSubreddit to 'all' if it's not present in monitoredSubreddits
+  if (
+    selectedSubreddit !== "all" &&
+    !monitoredSubreddits.some(sub => sub.name.toLowerCase() === `r/${selectedSubreddit}`.toLowerCase())
+  ) {
+    setSelectedSubreddit("all");
+  }
+
+  // Function to flag a post
+  const flagPost = async (id: string) => {
+    await axios.post("http://localhost:8000/flag", { id });
+    setFlaggedIds(prev => [...prev, id]);
+  };
+
+  // Function to unflag a post
+  const unflagPost = async (id: string) => {
+    await axios.post("http://localhost:8000/unflag", { id });
+    setFlaggedIds(prev => prev.filter(flaggedId => flaggedId !== id));
+  };
 
   return (
     <div className="space-y-6">
       {/* Stats Overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold">{recentMentions.length}</div><div className="text-sm text-muted-foreground">Total Mentions</div></div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold text-destructive">0</div><div className="text-sm text-muted-foreground">Flagged</div></div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold text-destructive">{flaggedIds.length}</div><div className="text-sm text-muted-foreground">Flagged</div></div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold text-success">0</div><div className="text-sm text-muted-foreground">Opportunities</div></div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold">--</div><div className="text-sm text-muted-foreground">Avg Sentiment</div></div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold">{average_sentiment}</div><div className="text-sm text-muted-foreground">Avg Sentiment</div></div></CardContent></Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Monitored Subreddits (optional, still static) */}
         <Card>
           <CardHeader><CardTitle className="text-base">Monitored Subreddits</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2 max-h-80 overflow-y-auto">
             {monitoredSubreddits.length === 0 ? (
               <div className="text-center text-muted-foreground py-8">
                 <p className="text-sm">No subreddits being monitored</p>
@@ -109,15 +145,17 @@ const SentimentMonitor = () => {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Recent Mentions</CardTitle>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <Select value={selectedSubreddit} onValueChange={setSelectedSubreddit}>
                     <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Subreddits</SelectItem>
-                      <SelectItem value="technology">r/technology</SelectItem>
-                      <SelectItem value="startups">r/startups</SelectItem>
-                      <SelectItem value="entrepreneur">r/entrepreneur</SelectItem>
-                      <SelectItem value="saas">r/SaaS</SelectItem>
+                      {monitoredSubreddits.map(subreddit => {
+                        const value = subreddit.name.replace(/^r\//i, "");
+                        return (
+                          <SelectItem key={subreddit.name} value={value}>{subreddit.name}</SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                   <Select value={sentimentFilter} onValueChange={setSentimentFilter}>
@@ -129,16 +167,25 @@ const SentimentMonitor = () => {
                       <SelectItem value="neutral">Neutral</SelectItem>
                     </SelectContent>
                   </Select>
+                  <div className="flex items-center gap-1 px-2 py-1 border rounded bg-muted">
+                    <input
+                      type="checkbox"
+                      checked={showFlaggedOnly}
+                      onChange={e => setShowFlaggedOnly(e.target.checked)}
+                      className="accent-destructive"
+                    />
+                    <span className="text-xs">Show Flagged Only</span>
+                  </div>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {filteredMentions.length === 0 ? (
+              {(showFlaggedOnly ? filteredMentions.filter(m => flaggedIds.includes(m.id)) : filteredMentions).length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
                   <p className="text-sm">No recent mentions found</p>
                 </div>
               ) : (
-                filteredMentions.map((mention) => (
+                (showFlaggedOnly ? filteredMentions.filter(m => flaggedIds.includes(m.id)) : filteredMentions).map((mention) => (
                   <div key={mention.id} className="border rounded p-3 space-y-2">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -147,6 +194,7 @@ const SentimentMonitor = () => {
                           <Badge variant="outline" className="text-xs">{mention.subreddit}</Badge>
                           {getSentimentBadge(mention.sentiment, mention.status ?? "")}
                           <span className="text-xs text-muted-foreground">u/{mention.author ?? "anonymous"}</span>
+                          <span className="text-xs text-[#00ADEF]">{mention.sentiment} ({mention.score})</span>
                         </div>
                         <div className="text-sm font-medium mb-1">{mention.title}</div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground mb-1">
@@ -163,7 +211,20 @@ const SentimentMonitor = () => {
                         )}
                       </div>
                       <div className="flex gap-1 ml-3">
-                        <Button variant="outline" size="sm">View</Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          asChild
+                        >
+                          <a href={mention.url} target="_blank" rel="noopener noreferrer">View</a>
+                        </Button>
+                        <Button
+                          variant={flaggedIds.includes(mention.id) ? "outline" : "destructive"}
+                          size="sm"
+                          onClick={() => flaggedIds.includes(mention.id) ? unflagPost(mention.id) : flagPost(mention.id)}
+                        >
+                          {flaggedIds.includes(mention.id) ? "Unflag" : "Flag"}
+                        </Button>
                         <Button variant={mention.status === "opportunity" ? "default" : "outline"} size="sm">
                           Engage
                         </Button>
