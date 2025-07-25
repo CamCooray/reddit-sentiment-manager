@@ -2,9 +2,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { 
-  TrendingUp, TrendingDown, Users, MessageCircle, 
-  ArrowUpRight, ArrowDownRight, Activity, Clock 
+import { useEffect, useState } from "react";
+import axios from "axios";
+
+import {
+  TrendingUp, TrendingDown, Users, MessageCircle,
+  ArrowUpRight, ArrowDownRight, Activity, Clock
 } from "lucide-react";
 
 const Dashboard = () => {
@@ -15,44 +18,25 @@ const Dashboard = () => {
     { subreddit: "r/investing", positive: 38, negative: 42, neutral: 20, posts: 203 },
   ];
 
-  const recentMentions = [
-    {
-      id: 1,
-      subreddit: "r/technology",
-      title: "New AI tool revolutionizes social media management",
-      sentiment: "positive",
-      score: 0.8,
-      upvotes: 234,
-      comments: 45,
-      timeAgo: "2h ago"
-    },
-    {
-      id: 2,
-      subreddit: "r/startups",
-      title: "Struggling with customer acquisition costs",
-      sentiment: "negative",
-      score: -0.6,
-      upvotes: 67,
-      comments: 23,
-      timeAgo: "4h ago"
-    },
-    {
-      id: 3,
-      subreddit: "r/entrepreneur",
-      title: "Best practices for community building",
-      sentiment: "positive",
-      score: 0.7,
-      upvotes: 189,
-      comments: 78,
-      timeAgo: "6h ago"
-    }
-  ];
+  const [recentMentions, setRecentMentions] = useState<any[]>([]);
+
+  useEffect(() => {
+    axios.get("http://localhost:8000/recent-mentions")
+      .then((res) => {
+        setRecentMentions(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch recent mentions:", err);
+      });
+  }, []);
 
   return (
     <section className="container mx-auto px-4 py-16">
       <div className="mb-8">
         <h2 className="text-3xl font-bold mb-2">Analytics Dashboard</h2>
-        <p className="text-muted-foreground">Real-time sentiment monitoring across your target subreddits</p>
+        <p className="text-muted-foreground">
+          Real-time sentiment monitoring across your target subreddits
+        </p>
       </div>
 
       {/* Stats Overview */}
@@ -115,7 +99,7 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Sentiment Analysis */}
+        {/* Subreddit Sentiment */}
         <Card className="bg-gradient-card border-border/50">
           <CardHeader>
             <CardTitle>Subreddit Sentiment Analysis</CardTitle>
@@ -154,17 +138,26 @@ const Dashboard = () => {
             <CardDescription>Latest posts requiring attention</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {recentMentions.length === 0 && (
+              <p className="text-sm text-muted-foreground">No recent mentions found.</p>
+            )}
             {recentMentions.map((mention) => (
               <div key={mention.id} className="border border-border/50 rounded-lg p-4 space-y-3">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1 flex-1">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">{mention.subreddit}</Badge>
-                      <Badge 
-                        variant={mention.sentiment === 'positive' ? 'default' : 'destructive'}
+                      <Badge
+                        variant={
+                          mention.sentiment === "positive"
+                            ? "default"
+                            : mention.sentiment === "neutral"
+                            ? "secondary"
+                            : "destructive"
+                        }
                         className="text-xs"
                       >
-                        {mention.sentiment === 'positive' ? 'Positive' : 'Negative'}
+                        {mention.sentiment.charAt(0).toUpperCase() + mention.sentiment.slice(1)}
                       </Badge>
                     </div>
                     <h4 className="font-medium text-sm leading-tight">{mention.title}</h4>
@@ -180,8 +173,10 @@ const Dashboard = () => {
                       <span>{mention.timeAgo}</span>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm">
-                    Engage
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={mention.url} target="_blank" rel="noopener noreferrer">
+                      Engage
+                    </a>
                   </Button>
                 </div>
               </div>
