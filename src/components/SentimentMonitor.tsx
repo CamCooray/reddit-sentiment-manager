@@ -98,52 +98,40 @@ const SentimentMonitor = () => {
 
   return (
     <div className="space-y-6">
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-card border-border/50">
+      {/* Stats Overview */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Mentions</p>
-                <p className="text-2xl font-bold">89</p>
-              </div>
-              <MessageCircle className="h-8 w-8 text-primary" />
+            <div className="text-center">
+              <div className="text-2xl font-semibold">89</div>
+              <div className="text-sm text-muted-foreground">Total Mentions</div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-card border-border/50">
+        <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Flagged Posts</p>
-                <p className="text-2xl font-bold text-destructive">7</p>
-              </div>
-              <AlertTriangle className="h-8 w-8 text-destructive" />
+            <div className="text-center">
+              <div className="text-2xl font-semibold text-destructive">7</div>
+              <div className="text-sm text-muted-foreground">Flagged</div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-card border-border/50">
+        <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Opportunities</p>
-                <p className="text-2xl font-bold text-success">12</p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-success" />
+            <div className="text-center">
+              <div className="text-2xl font-semibold text-success">12</div>
+              <div className="text-sm text-muted-foreground">Opportunities</div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-card border-border/50">
+        <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Avg Sentiment</p>
-                <p className="text-2xl font-bold text-success">+0.24</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-success" />
+            <div className="text-center">
+              <div className="text-2xl font-semibold">+0.24</div>
+              <div className="text-sm text-muted-foreground">Avg Sentiment</div>
             </div>
           </CardContent>
         </Card>
@@ -151,28 +139,22 @@ const SentimentMonitor = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Monitored Subreddits */}
-        <Card className="bg-gradient-card border-border/50">
+        <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Monitored Subreddits
-            </CardTitle>
-            <CardDescription>Active monitoring across target communities</CardDescription>
+            <CardTitle className="text-base">Monitored Subreddits</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2">
             {monitoredSubreddits.map((subreddit, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border border-border/50 rounded-lg">
-                <div className="flex items-center gap-3">
+              <div key={index} className="flex items-center justify-between p-2 border rounded">
+                <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-success rounded-full" />
                   <div>
-                    <p className="font-medium text-sm">{subreddit.name}</p>
-                    <p className="text-xs text-muted-foreground">{subreddit.mentions} mentions</p>
+                    <div className="text-sm font-medium">{subreddit.name}</div>
+                    <div className="text-xs text-muted-foreground">{subreddit.mentions} mentions</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className={`text-sm font-medium ${subreddit.avgSentiment >= 0 ? 'text-success' : 'text-destructive'}`}>
-                    {subreddit.avgSentiment >= 0 ? '+' : ''}{subreddit.avgSentiment.toFixed(2)}
-                  </p>
+                <div className={`text-sm font-medium ${subreddit.avgSentiment >= 0 ? 'text-success' : 'text-destructive'}`}>
+                  {subreddit.avgSentiment >= 0 ? '+' : ''}{subreddit.avgSentiment.toFixed(2)}
                 </div>
               </div>
             ))}
@@ -181,13 +163,10 @@ const SentimentMonitor = () => {
 
         {/* Recent Mentions */}
         <div className="lg:col-span-2">
-          <Card className="bg-gradient-card border-border/50">
+          <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Recent Mentions</CardTitle>
-                  <CardDescription>Posts requiring attention or engagement</CardDescription>
-                </div>
+                <CardTitle className="text-base">Recent Mentions</CardTitle>
                 <div className="flex gap-2">
                   <Select value={selectedSubreddit} onValueChange={setSelectedSubreddit}>
                     <SelectTrigger className="w-32">
@@ -214,40 +193,33 @@ const SentimentMonitor = () => {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3">
               {recentMentions.map((mention) => (
-                <div key={mention.id} className="border border-border/50 rounded-lg p-4 space-y-3">
+                <div key={mention.id} className="border rounded p-3 space-y-2">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-2 flex-1">
-                      <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
                         {getStatusIcon(mention.status)}
                         <Badge variant="outline" className="text-xs">{mention.subreddit}</Badge>
                         {getSentimentBadge(mention.sentiment, mention.status)}
-                        <span className="text-xs text-muted-foreground">by u/{mention.author}</span>
+                        <span className="text-xs text-muted-foreground">u/{mention.author}</span>
                       </div>
-                      <h4 className="font-medium text-sm leading-tight">{mention.title}</h4>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <TrendingUp className="h-3 w-3" />
-                          {mention.upvotes}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <MessageCircle className="h-3 w-3" />
-                          {mention.comments}
-                        </span>
+                      <div className="text-sm font-medium mb-1">{mention.title}</div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground mb-1">
+                        <span>{mention.upvotes} upvotes</span>
+                        <span>{mention.comments} comments</span>
                         <span>{mention.timeAgo}</span>
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {mention.keywords.map((keyword, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs px-2 py-1">
+                          <Badge key={i} variant="secondary" className="text-xs">
                             {keyword}
                           </Badge>
                         ))}
                       </div>
                     </div>
-                    <div className="flex gap-2 ml-4">
+                    <div className="flex gap-1 ml-3">
                       <Button variant="outline" size="sm">
-                        <ExternalLink className="h-3 w-3 mr-1" />
                         View
                       </Button>
                       <Button 

@@ -9,20 +9,19 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <Header />
       
-      <div className="container mx-auto px-4 py-6">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">GTM Reddit Operations</h1>
-          <p className="text-muted-foreground">
-            Monitor sentiment, manage outreach campaigns, and track engagement across Reddit
+      <div className="container mx-auto px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold mb-2">Reddit Sentiment Tracker</h1>
+          <p className="text-muted-foreground text-sm">
+            Internal tool for monitoring Reddit sentiment and managing outreach
           </p>
         </div>
 
         <Tabs defaultValue="monitor" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="monitor">Sentiment Monitor</TabsTrigger>
-            <TabsTrigger value="outreach">Active Campaigns</TabsTrigger>
-            <TabsTrigger value="accounts">Account Manager</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="outreach">Campaigns</TabsTrigger>
+            <TabsTrigger value="accounts">Accounts</TabsTrigger>
           </TabsList>
 
           <TabsContent value="monitor" className="space-y-6">
@@ -35,13 +34,6 @@ const Index = () => {
 
           <TabsContent value="accounts" className="space-y-6">
             <AccountManager />
-          </TabsContent>
-
-          <TabsContent value="analytics" className="space-y-6">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold mb-2">Analytics Dashboard</h3>
-              <p className="text-muted-foreground">Campaign performance and ROI tracking coming soon</p>
-            </div>
           </TabsContent>
         </Tabs>
       </div>
