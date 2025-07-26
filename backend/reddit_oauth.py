@@ -38,7 +38,13 @@ async def auth_callback(request: Request):
     token = await oauth.reddit.authorize_access_token(request)
     user_response = await oauth.reddit.get('me', token=token)
     user_info = user_response.json()
-    # Store token and user_info securely in Supabase
+    # Fetch karma and total posts
+    karma = user_info.get("total_karma", 0)
+    # Fetch total posts
+    posts_response = await oauth.reddit.get(f"user/{user_info.get('name')}/submitted", token=token)
+    posts_data = posts_response.json()
+    total_posts = len(posts_data.get("data", {}).get("children", []))
+    # Store token, user_info, karma, and total_posts in Supabase
     supabase.table("reddit_accounts").upsert({
         "username": user_info.get("name"),
         "access_token": token.get("access_token"),
@@ -46,7 +52,9 @@ async def auth_callback(request: Request):
         "token_type": token.get("token_type"),
         "expires_in": token.get("expires_in"),
         "scope": token.get("scope"),
-        "status": "active"
+        "status": "active",
+        "karma": karma,
+        "total_posts": total_posts
     }).execute()
     html_content = """
     <html>
@@ -82,3 +90,27 @@ async def update_account_status(account_id: int, request: Request):
         return {"success": False, "error": "Invalid status"}
     supabase.table("reddit_accounts").update({"status": new_status}).eq("id", account_id).execute()
     return {"success": True, "status": new_status}
+
+@router.post('/accounts/{account_id}/refresh_stats')
+async def refresh_account_stats(account_id: int):
+    # Get account info from Supabase
+    result = supabase.table("reddit_accounts").select("username", "access_token").eq("id", account_id).execute()
+    if not result.data or len(result.data) == 0:
+        return {"success": False, "error": "Account not found"}
+    account = result.data[0]
+    username = account.get("username")
+    access_token = account.get("access_token")
+    if not username or not access_token:
+        return {"success": False, "error": "Missing username or access token"}
+    # Fetch latest karma
+    oauth_client = oauth.reddit
+    user_response = await oauth_client.get('me', token={"access_token": access_token, "token_type": "bearer"})
+    user_info = user_response.json()
+    karma = user_info.get("total_karma", 0)
+    # Fetch latest total posts
+    posts_response = await oauth_client.get(f"user/{username}/submitted", token={"access_token": access_token, "token_type": "bearer"})
+    posts_data = posts_response.json()
+    total_posts = len(posts_data.get("data", {}).get("children", []))
+    # Update Supabase
+    supabase.table("reddit_accounts").update({"karma": karma, "total_posts": total_posts}).eq("id", account_id).execute()
+    return {"success": True, "karma": karma, "total_posts": total_posts}

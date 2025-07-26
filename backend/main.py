@@ -49,7 +49,9 @@ app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY")
 
 @app.get("/recent-mentions")
 def recent_mentions():
-    subreddits = ["SaaS", "technology", "startups"]
+    # Fetch monitored subreddits from Supabase
+    result = supabase.table("monitored_subreddits").select("name").execute()
+    subreddits = [row["name"] for row in result.data] if result.data else []
     keywords = ["Cleverbridge", "Merchant of Record", "MoR", "scaling"]
     results = get_recent_mentions(subreddits, keywords=keywords, limit=25)
     results = analyze_sentiment(results)  # Add sentiment and score to each post
@@ -78,5 +80,27 @@ async def unflag_post(request: Request):
     post_id = data.get("id")
     supabase.table("flagged_posts").delete().eq("post_id", post_id).execute()
     return {"success": True}
+
+@app.post("/monitored-subreddits")
+async def add_monitored_subreddit(request: Request):
+    data = await request.json()
+    subreddit = data.get("subreddit")
+    if subreddit:
+        supabase.table("monitored_subreddits").insert({"name": subreddit}).execute()
+        return {"success": True}
+    return {"success": False, "error": "Missing subreddit"}
+
+@app.delete("/monitored-subreddits/{subreddit}")
+def remove_monitored_subreddit(subreddit: str):
+    # Case-insensitive match for subreddit name
+    result = supabase.table("monitored_subreddits").delete().ilike("name", subreddit).execute()
+    # Always return success if request completes
+    return {"success": True}
+
+@app.get("/monitored-subreddits")
+def get_monitored_subreddits():
+    result = supabase.table("monitored_subreddits").select("name").execute()
+    subreddits = [row["name"] for row in result.data]
+    return subreddits
 
 app.include_router(reddit_oauth_router)

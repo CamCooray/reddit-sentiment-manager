@@ -91,8 +91,8 @@ const AccountManager = () => {
   // Dynamic stats
   const totalAccounts = accounts.length;
   const activeAccounts = accounts.filter((a: any) => a.status === "active").length;
-  const totalKarma = accounts.reduce((sum: number, a: any) => sum + (a.karma || 0), 0);
-  const postsToday = accounts.reduce((sum: number, a: any) => sum + (a.postsToday || 0), 0);
+  const totalKarma = accounts.reduce((sum: number, a: any) => sum + (a.karma ?? 0), 0);
+  const totalPosts = accounts.reduce((sum: number, a: any) => sum + (a.total_posts ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -138,8 +138,8 @@ const AccountManager = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Posts Today</p>
-                <p className="text-2xl font-bold">{postsToday}</p>
+                <p className="text-sm text-muted-foreground">Total Posts</p>
+                <p className="text-2xl font-bold">{totalPosts}</p>
               </div>
               <MessageCircle className="h-8 w-8 text-info" />
             </div>
@@ -190,6 +190,14 @@ const AccountManager = () => {
                         <Clock className="h-3 w-3" />
                         Connected: {new Date(account.created_at).toLocaleString()}
                       </span>
+                      <span className="flex items-center gap-1">
+                        <Shield className="h-3 w-3" />
+                        Karma: <span className={getKarmaColor(account.karma)}>{account.karma ?? 0}</span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <MessageCircle className="h-3 w-3" />
+                        Posts: {account.total_posts ?? 0}
+                      </span>
                     </div>
                   </div>
                   <div className="flex gap-2 ml-4">
@@ -207,6 +215,18 @@ const AccountManager = () => {
                       }
                     >
                       {account.status === "active" ? "Pause" : "Activate"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        await fetch(`http://localhost:8000/accounts/${account.id}/refresh_stats`, {
+                          method: "POST"
+                        });
+                        queryClient.invalidateQueries({ queryKey: ["accounts"] });
+                      }}
+                    >
+                      Refresh Stats
                     </Button>
                   </div>
                 </div>

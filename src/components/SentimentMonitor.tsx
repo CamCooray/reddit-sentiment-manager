@@ -23,6 +23,10 @@ const SentimentMonitor = () => {
   const [flaggedIds, setFlaggedIds] = useState<string[]>([]);
   const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
   const [opportunityFilter, setOpportunityFilter] = useState(false);
+  const [subredditInput, setSubredditInput] = useState("");
+  const [manualSubreddits, setManualSubreddits] = useState<string[]>([]);
+  // State for monitored subreddits from backend
+  const [backendSubreddits, setBackendSubreddits] = useState<string[]>([]);
 
   const recentMentionsQuery = useQuery<RecentMentionsResponse>({
     queryKey: ["recentMentions"],
@@ -45,7 +49,7 @@ const SentimentMonitor = () => {
   }, []);
 
   // Compute monitored subreddits dynamically from recentMentions
-  const monitoredSubreddits = Object.values(
+  const computedMonitoredSubreddits = Object.values(
     recentMentions.reduce((acc, mention) => {
       const name = mention.subreddit;
       if (!acc[name]) {
@@ -88,7 +92,7 @@ const SentimentMonitor = () => {
   // Reset selectedSubreddit to 'all' if it's not present in monitoredSubreddits
   if (
     selectedSubreddit !== "all" &&
-    !monitoredSubreddits.some(sub => sub.name.toLowerCase() === `r/${selectedSubreddit}`.toLowerCase())
+    !computedMonitoredSubreddits.some(sub => sub.name.toLowerCase() === `r/${selectedSubreddit}`.toLowerCase())
   ) {
     setSelectedSubreddit("all");
   }
@@ -105,8 +109,80 @@ const SentimentMonitor = () => {
     setFlaggedIds(prev => prev.filter(flaggedId => flaggedId !== id));
   };
 
+  // Add subreddit to backend
+  async function addSubredditToBackend(subreddit: string) {
+    try {
+      const response = await fetch('http://localhost:8000/monitored-subreddits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subreddit }),
+      });
+      return await response.json();
+    } catch (err) {
+      return { success: false, error: 'Network error' };
+    }
+  }
+
+  // Remove subreddit from backend
+  async function removeSubredditFromBackend(subreddit: string) {
+    try {
+      const response = await fetch(`http://localhost:8000/monitored-subreddits/${subreddit.replace(/^r\//i, "")}`, {
+        method: 'DELETE',
+      });
+      return await response.json();
+    } catch (err) {
+      return { success: false, error: 'Network error' };
+    }
+  }
+
+  // Fetch monitored subreddits from backend on mount and after add/remove
+  const fetchMonitoredSubreddits = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/monitored-subreddits');
+      const data = await res.json();
+      setBackendSubreddits(data);
+    } catch {
+      setBackendSubreddits([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchMonitoredSubreddits();
+  }, []);
+
+  const handleAddSubreddit = async () => {
+    const sub = subredditInput.trim();
+    if (sub && !backendSubreddits.includes(sub)) {
+      const result = await addSubredditToBackend(sub);
+      if (result.success) {
+        setSubredditInput("");
+        recentMentionsQuery.refetch(); // Refetch mentions after adding
+        fetchMonitoredSubreddits(); // Refetch backend subreddits
+      } else {
+        alert(result.error || 'Failed to add subreddit');
+      }
+    }
+  };
+
+  const handleRemoveSubreddit = async (subreddit: string) => {
+    const result = await removeSubredditFromBackend(subreddit);
+    if (result.success) {
+      recentMentionsQuery.refetch(); // Refetch mentions after removing
+      fetchMonitoredSubreddits(); // Refetch backend subreddits
+    } else {
+      alert(result.error || 'Failed to remove subreddit');
+    }
+  };
+
+  // Only use backend subreddits for display, with mention counts
+  const allMonitoredSubreddits = backendSubreddits.map(sub => {
+    const subredditName = `r/${sub.replace(/^r\//i, "")}`;
+    const mentions = recentMentions.filter(m => m.subreddit.toLowerCase() === subredditName.toLowerCase()).length;
+    return { name: subredditName, mentions };
+  });
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-gray-900 min-h-screen text-white">
       {/* Stats Overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold">{recentMentions.length}</div><div className="text-sm text-muted-foreground">Total Mentions</div></div></CardContent></Card>
@@ -119,13 +195,23 @@ const SentimentMonitor = () => {
         {/* Monitored Subreddits (optional, still static) */}
         <Card>
           <CardHeader><CardTitle className="text-base">Monitored Subreddits</CardTitle></CardHeader>
-          <CardContent className="space-y-2 max-h-80 overflow-y-auto">
-            {monitoredSubreddits.length === 0 ? (
+          <CardContent className="space-y-2">
+            <div className="flex gap-2 mb-4">
+              <input
+                className="border rounded px-2 py-1 w-full bg-gray-800 text-white placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary"
+                placeholder="Add subreddit (e.g. SaaS)"
+                value={subredditInput}
+                onChange={e => setSubredditInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleAddSubreddit(); }}
+              />
+              <Button variant="default" onClick={handleAddSubreddit}>Add</Button>
+            </div>
+            {allMonitoredSubreddits.length === 0 ? (
               <div className="text-center text-muted-foreground py-8">
                 <p className="text-sm">No subreddits being monitored</p>
               </div>
             ) : (
-              monitoredSubreddits.map((subreddit, index) => (
+              allMonitoredSubreddits.map((subreddit, index) => (
                 <div key={subreddit.name} className="flex items-center justify-between p-2 border rounded">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-success rounded-full" />
@@ -134,6 +220,9 @@ const SentimentMonitor = () => {
                       <div className="text-xs text-muted-foreground">{subreddit.mentions} mentions</div>
                     </div>
                   </div>
+                  <Button variant="outline" size="sm" onClick={() => handleRemoveSubreddit(subreddit.name)}>
+                    Remove
+                  </Button>
                 </div>
               ))
             )}
@@ -151,7 +240,7 @@ const SentimentMonitor = () => {
                     <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Subreddits</SelectItem>
-                      {monitoredSubreddits.map(subreddit => {
+                      {computedMonitoredSubreddits.map(subreddit => {
                         const value = subreddit.name.replace(/^r\//i, "");
                         return (
                           <SelectItem key={subreddit.name} value={value}>{subreddit.name}</SelectItem>
