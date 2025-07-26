@@ -1,10 +1,11 @@
 fastapi
 uvicorn
 praw
-supabase-py
+supabase
 python-dotenv
 requests
 textblob
 vaderSentiment
 authlib
-fastapi-security
+itsdangerous
+starlette
