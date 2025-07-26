@@ -4,7 +4,9 @@ from fastapi import Request
 from .reddit_utils import get_recent_mentions
 from .sentiment_analysis import analyze_sentiment
 from supabase import create_client, Client
+from starlette.middleware.sessions import SessionMiddleware
 import os
+from .reddit_oauth import router as reddit_oauth_router
 
 app = FastAPI()
 
@@ -41,6 +43,10 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
+
+
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY"))
+
 @app.get("/recent-mentions")
 def recent_mentions():
     subreddits = ["SaaS", "technology", "startups"]
@@ -72,3 +78,5 @@ async def unflag_post(request: Request):
     post_id = data.get("id")
     supabase.table("flagged_posts").delete().eq("post_id", post_id).execute()
     return {"success": True}
+
+app.include_router(reddit_oauth_router)

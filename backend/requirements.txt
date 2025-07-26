@@ -1,3 +1,10 @@
 fastapi
 uvicorn
 praw
+supabase-py
+python-dotenv
+requests
+textblob
+vaderSentiment
+authlib
+fastapi-security

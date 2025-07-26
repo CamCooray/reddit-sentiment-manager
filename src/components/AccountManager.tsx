@@ -2,74 +2,70 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { 
-  User, Shield, Clock, MessageCircle, 
+import {
+  User, Shield, Clock, MessageCircle,
   Settings, Plus, Eye, EyeOff, Activity
 } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 const AccountManager = () => {
-  const accounts = [
-    {
-      id: 1,
-      username: "helpful_dev_22",
-      karma: 2847,
-      accountAge: "2y 4m",
-      status: "active",
-      lastActivity: "2h ago",
-      campaignsActive: 2,
-      postsToday: 3,
-      avgSentiment: 0.6,
-      isVisible: true
-    },
-    {
-      id: 2,
-      username: "startup_advisor_pro",
-      karma: 5621,
-      accountAge: "3y 1m",
-      status: "active",
-      lastActivity: "45m ago",
-      campaignsActive: 1,
-      postsToday: 1,
-      avgSentiment: 0.4,
-      isVisible: true
-    },
-    {
-      id: 3,
-      username: "community_builder_89",
-      karma: 1423,
-      accountAge: "1y 8m",
-      status: "cooldown",
-      lastActivity: "1d ago",
-      campaignsActive: 0,
-      postsToday: 0,
-      avgSentiment: 0.7,
-      isVisible: false
-    },
-    {
-      id: 4,
-      username: "tech_solutions_help",
-      karma: 892,
-      accountAge: "11m",
-      status: "active",
-      lastActivity: "4h ago",
-      campaignsActive: 1,
-      postsToday: 2,
-      avgSentiment: 0.5,
-      isVisible: true
-    },
-    {
-      id: 5,
-      username: "industry_expert_insights",
-      karma: 3156,
-      accountAge: "2y 9m",
-      status: "paused",
-      lastActivity: "3d ago",
-      campaignsActive: 0,
-      postsToday: 0,
-      avgSentiment: 0.8,
-      isVisible: false
+  const queryClient = useQueryClient();
+  const { data: accounts = [], isLoading, isError } = useQuery({
+    queryKey: ["accounts"],
+    queryFn: async () => {
+      const res = await fetch("http://localhost:8000/accounts");
+      if (!res.ok) throw new Error("Failed to fetch accounts");
+      return res.json();
     }
-  ];
+  });
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<any>(null);
+
+  // Mutation for deleting account
+  const deleteAccountMutation = useMutation({
+    mutationFn: async (accountId: number) => {
+      const res = await fetch(`http://localhost:8000/accounts/${accountId}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error("Failed to delete account");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      setModalOpen(false);
+      setSelectedAccount(null);
+    }
+  });
+
+  // Mutation for updating account status
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ accountId, status }: { accountId: number; status: string }) => {
+      const res = await fetch(`http://localhost:8000/accounts/${accountId}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    }
+  });
+
+  // Handler for connect button
+  const handleConnect = () => {
+    window.location.href = "http://localhost:8000/auth/login";
+  };
+
+  // Handler for cog/settings button
+  const handleSettingsClick = (account: any) => {
+    setSelectedAccount(account);
+    setModalOpen(true);
+  };
 
   const getStatusColor = (status: string) => {
     if (status === "active") return "text-success";
@@ -92,6 +88,12 @@ const AccountManager = () => {
     return "text-muted-foreground";
   };
 
+  // Dynamic stats
+  const totalAccounts = accounts.length;
+  const activeAccounts = accounts.filter((a: any) => a.status === "active").length;
+  const totalKarma = accounts.reduce((sum: number, a: any) => sum + (a.karma || 0), 0);
+  const postsToday = accounts.reduce((sum: number, a: any) => sum + (a.postsToday || 0), 0);
+
   return (
     <div className="space-y-6">
       {/* Account Overview */}
@@ -101,7 +103,7 @@ const AccountManager = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Accounts</p>
-                <p className="text-2xl font-bold">5</p>
+                <p className="text-2xl font-bold">{totalAccounts}</p>
               </div>
               <User className="h-8 w-8 text-primary" />
             </div>
@@ -113,7 +115,7 @@ const AccountManager = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Active Accounts</p>
-                <p className="text-2xl font-bold text-success">3</p>
+                <p className="text-2xl font-bold text-success">{activeAccounts}</p>
               </div>
               <Activity className="h-8 w-8 text-success" />
             </div>
@@ -125,7 +127,7 @@ const AccountManager = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Karma</p>
-                <p className="text-2xl font-bold">13,939</p>
+                <p className="text-2xl font-bold">{totalKarma.toLocaleString()}</p>
               </div>
               <Shield className="h-8 w-8 text-primary" />
             </div>
@@ -137,7 +139,7 @@ const AccountManager = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Posts Today</p>
-                <p className="text-2xl font-bold">6</p>
+                <p className="text-2xl font-bold">{postsToday}</p>
               </div>
               <MessageCircle className="h-8 w-8 text-info" />
             </div>
@@ -153,79 +155,81 @@ const AccountManager = () => {
               <CardTitle>Account Management</CardTitle>
               <CardDescription>Monitor and control your Reddit accounts for outreach campaigns</CardDescription>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="default" size="sm" onClick={handleConnect}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Account
+              Connect Reddit Account
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {accounts.map((account) => (
-            <div key={account.id} className="border border-border/50 rounded-lg p-4 space-y-3">
-              <div className="flex items-start justify-between">
-                <div className="space-y-2 flex-1">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      {account.isVisible ? (
+          {isLoading ? (
+            <div className="text-center text-muted-foreground py-8">
+              <p className="text-sm">Loading accounts...</p>
+            </div>
+          ) : isError ? (
+            <div className="text-center text-destructive py-8">
+              <p className="text-sm">Failed to load accounts.</p>
+            </div>
+          ) : accounts.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8">
+              <p className="text-sm">No accounts connected. Click 'Connect Reddit Account' to get started.</p>
+            </div>
+          ) : (
+            accounts.map((account: any) => (
+              <div key={account.id} className="border border-border/50 rounded-lg p-4 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <Eye className="h-4 w-4 text-success" />
-                      ) : (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
-                      )}
-                      <h4 className="font-semibold text-sm">u/{account.username}</h4>
+                        <h4 className="font-semibold text-sm">u/{account.username}</h4>
+                      </div>
                     </div>
-                    {getStatusBadge(account.status)}
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">Karma</p>
-                      <p className={`font-medium ${getKarmaColor(account.karma)}`}>
-                        {account.karma.toLocaleString()}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Account Age</p>
-                      <p className="font-medium">{account.accountAge}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Active Campaigns</p>
-                      <p className="font-medium">{account.campaignsActive}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Posts Today</p>
-                      <p className="font-medium">{account.postsToday}</p>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Connected: {new Date(account.created_at).toLocaleString()}
+                      </span>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      Last activity: {account.lastActivity}
-                    </span>
-                    <span className={`flex items-center gap-1 ${account.avgSentiment >= 0.5 ? 'text-success' : 'text-warning'}`}>
-                      <Activity className="h-3 w-3" />
-                      Avg sentiment: {account.avgSentiment.toFixed(1)}
-                    </span>
+                  <div className="flex gap-2 ml-4">
+                    <Button variant="ghost" size="sm" onClick={() => handleSettingsClick(account)}>
+                      <Settings className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant={account.status === "active" ? "outline" : "default"}
+                      size="sm"
+                      onClick={() =>
+                        updateStatusMutation.mutate({
+                          accountId: account.id,
+                          status: account.status === "active" ? "paused" : "active"
+                        })
+                      }
+                    >
+                      {account.status === "active" ? "Pause" : "Activate"}
+                    </Button>
                   </div>
-                </div>
-                
-                <div className="flex gap-2 ml-4">
-                  <Button variant="ghost" size="sm">
-                    <Settings className="h-3 w-3" />
-                  </Button>
-                  <Button 
-                    variant={account.status === "active" ? "outline" : "default"} 
-                    size="sm"
-                  >
-                    {account.status === "active" ? "Pause" : "Activate"}
-                  </Button>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </CardContent>
       </Card>
-
+      {/* Modal confirmation for account removal */}
+      {modalOpen && selectedAccount && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-background rounded-lg p-6 shadow-lg w-full max-w-sm">
+            <h3 className="text-lg font-semibold mb-4">Remove Account</h3>
+            <p className="mb-6">Are you sure you want to remove <span className="font-bold">u/{selectedAccount.username}</span>?</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={() => deleteAccountMutation.mutate(selectedAccount.id)}>
+                {deleteAccountMutation.status === "pending" ? "Removing..." : "Remove"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="bg-gradient-card border-border/50">

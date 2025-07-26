@@ -22,6 +22,7 @@ const SentimentMonitor = () => {
   const [sentimentFilter, setSentimentFilter] = useState("all");
   const [flaggedIds, setFlaggedIds] = useState<string[]>([]);
   const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
+  const [opportunityFilter, setOpportunityFilter] = useState(false);
 
   const recentMentionsQuery = useQuery<RecentMentionsResponse>({
     queryKey: ["recentMentions"],
@@ -176,16 +177,35 @@ const SentimentMonitor = () => {
                     />
                     <span className="text-xs">Show Flagged Only</span>
                   </div>
+                  <div className="flex items-center gap-1 px-2 py-1 border rounded bg-muted">
+                    <input
+                      type="checkbox"
+                      checked={opportunityFilter}
+                      onChange={e => setOpportunityFilter(e.target.checked)}
+                      className="accent-success"
+                    />
+                    <span className="text-xs">Show Opportunities Only</span>
+                  </div>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {(showFlaggedOnly ? filteredMentions.filter(m => flaggedIds.includes(m.id)) : filteredMentions).length === 0 ? (
+              {(showFlaggedOnly
+                ? filteredMentions.filter(m => flaggedIds.includes(m.id))
+                : opportunityFilter
+                  ? filteredMentions.filter(m => m.status === "opportunity")
+                  : filteredMentions
+              ).length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
                   <p className="text-sm">No recent mentions found</p>
                 </div>
               ) : (
-                (showFlaggedOnly ? filteredMentions.filter(m => flaggedIds.includes(m.id)) : filteredMentions).map((mention) => (
+                (showFlaggedOnly
+                  ? filteredMentions.filter(m => flaggedIds.includes(m.id))
+                  : opportunityFilter
+                    ? filteredMentions.filter(m => m.status === "opportunity")
+                    : filteredMentions
+                ).map((mention) => (
                   <div key={mention.id} className="border rounded p-3 space-y-2">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">

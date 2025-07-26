@@ -60,7 +60,7 @@ if __name__ == "__main__":
     # Increase limit to 25 to look further back
     results = get_recent_mentions(test_subreddits, limit=50)
     print(f"Fetched {len(results)} mention(s):")
-    for r in results:
-        print(r)
+    #for r in results:
+        #print(r)
     # Add a short delay to avoid rate limits if looping over more subreddits in future
     time.sleep(1)
