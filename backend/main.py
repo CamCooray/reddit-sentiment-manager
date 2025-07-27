@@ -60,7 +60,18 @@ def clear_cache():
     """Clear the cache when data is updated"""
     get_cached_subreddits.cache_clear()
     get_cached_keywords.cache_clear()
-    return {"success": True}
+    return {"message": "Cache cleared"}
+
+# Configuration endpoint for frontend authentication
+@app.get("/api/config")
+def get_frontend_config():
+    """Provide frontend configuration including auth credentials"""
+    return {
+        "auth": {
+            "username": os.getenv("AUTH_USERNAME", "admin"),
+            "password": os.getenv("AUTH_PASSWORD", "reddit123")
+        }
+    }
 
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY"))
 

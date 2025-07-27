@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { getAuthConfig } from '../config/auth';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -44,39 +45,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   const login = async (credentials: { username: string; password: string }): Promise<boolean> => {
-    // Get credentials from environment variables
-    const validUsername = import.meta.env.VITE_AUTH_USERNAME;
-    const validPassword = import.meta.env.VITE_AUTH_PASSWORD;
-    
-    // Debug: Log environment variables (remove in production)
-    console.log('Environment check:', {
-      hasUsername: !!validUsername,
-      hasPassword: !!validPassword,
-      usernameValue: validUsername,
-      passwordValue: validPassword, // Temporary for debugging
-      mode: import.meta.env.MODE,
-      allEnv: Object.keys(import.meta.env)
-    });
-    
-    // Check if environment variables are set
-    if (!validUsername || !validPassword) {
-      console.error('Authentication credentials not configured. Please set VITE_AUTH_USERNAME and VITE_AUTH_PASSWORD environment variables.');
-      console.error('Available env vars:', Object.keys(import.meta.env));
+    try {
+      // Get credentials from configuration (now async)
+      const authConfig = await getAuthConfig();
+      
+      // Debug: Log environment variables (remove in production)
+      console.log('Auth config check:', {
+        configUsername: authConfig.username,
+        configPassword: authConfig.password,
+        mode: import.meta.env.MODE,
+        envVarsAvailable: Object.keys(import.meta.env)
+      });
+      
+      if (credentials.username === authConfig.username && credentials.password === authConfig.password) {
+        const authData = {
+          user: { username: credentials.username },
+          expiry: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+        };
+        
+        setIsAuthenticated(true);
+        setUser({ username: credentials.username });
+        localStorage.setItem('reddit-sentiment-auth', JSON.stringify(authData));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login failed:', error);
       return false;
     }
-    
-    if (credentials.username === validUsername && credentials.password === validPassword) {
-      const authData = {
-        user: { username: credentials.username },
-        expiry: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
-      };
-      
-      setIsAuthenticated(true);
-      setUser({ username: credentials.username });
-      localStorage.setItem('reddit-sentiment-auth', JSON.stringify(authData));
-      return true;
-    }
-    return false;
   };
 
   const logout = () => {
