@@ -21,54 +21,221 @@ interface RecentMentionsResponse {
 const SentimentMonitor = () => {
   const [selectedSubreddit, setSelectedSubreddit] = useState("all");
   const [sentimentFilter, setSentimentFilter] = useState("all");
-  const [flaggedIds, setFlaggedIds] = useState<string[]>([]);
   const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
   const [opportunityFilter, setOpportunityFilter] = useState(false);
   const [subredditInput, setSubredditInput] = useState("");
-  const [manualSubreddits, setManualSubreddits] = useState<string[]>([]);
-  // State for monitored subreddits from backend
-  const [backendSubreddits, setBackendSubreddits] = useState<string[]>([]);
-
-  // State for pagination
+  const [keywordInput, setKeywordInput] = useState("");
   const [displayCount, setDisplayCount] = useState(25);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // State for keywords management
-  const [keywords, setKeywords] = useState<string[]>([]);
-  const [keywordInput, setKeywordInput] = useState("");
+  const queryClient = useQueryClient();
 
+  // Optimized: Single query for recent mentions with longer stale time
   const recentMentionsQuery = useQuery<RecentMentionsResponse>({
     queryKey: ["recentMentions"],
     queryFn: async () => {
       const res = await axios.get(apiUrl("/recent-mentions"));
       return res.data as RecentMentionsResponse;
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2, // 2 minutes (reduced from 5)
+    gcTime: 1000 * 60 * 10, // 10 minutes cache
+    refetchOnWindowFocus: false,
   });
+
+  // Optimized: Separate query for flagged posts
+  const flaggedQuery = useQuery<string[]>({
+    queryKey: ["flaggedPosts"],
+    queryFn: async () => {
+      const res = await axios.get<string[]>(apiUrl("/flagged"));
+      return res.data;
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    initialData: [],
+  });
+
+  // Optimized: Separate query for monitored subreddits
+  const subredditsQuery = useQuery<string[]>({
+    queryKey: ["monitoredSubreddits"],
+    queryFn: async () => {
+      const res = await axios.get<string[]>(apiUrl("/monitored-subreddits"));
+      return res.data;
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    initialData: [],
+  });
+
+  // Optimized: Separate query for keywords
+  const keywordsQuery = useQuery<string[]>({
+    queryKey: ["keywords"],
+    queryFn: async () => {
+      const res = await axios.get<string[]>(apiUrl("/keywords"));
+      return res.data;
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    initialData: [],
+  });
+
   const recentMentions = recentMentionsQuery.data?.posts ?? [];
   const average_sentiment = recentMentionsQuery.data?.average_sentiment ?? 0;
-  const isLoading = recentMentionsQuery.isLoading;
-  const error = recentMentionsQuery.error;
+  const flaggedIds = flaggedQuery.data ?? [];
+  const backendSubreddits = subredditsQuery.data ?? [];
+  const keywords = keywordsQuery.data ?? [];
 
-  // Fetch flagged IDs from backend
-  useEffect(() => {
-    axios.get<string[]>(apiUrl("/flagged"))
-      .then(res => setFlaggedIds(res.data))
-      .catch(() => setFlaggedIds([]));
+  // Memoized: Compute monitored subreddits with mention counts
+  const allMonitoredSubreddits = useMemo(() => {
+    return backendSubreddits.map(sub => {
+      const subredditName = `r/${sub.replace(/^r\//i, "")}`;
+      const mentions = recentMentions.filter(m => 
+        m.subreddit.toLowerCase() === subredditName.toLowerCase()
+      ).length;
+      return { name: subredditName, mentions };
+    });
+  }, [backendSubreddits, recentMentions]);
+
+  // Memoized: Filtered mentions based on current filters
+  const filteredMentions = useMemo(() => {
+    return recentMentions.filter((mention) => {
+      const subredditMatches =
+        selectedSubreddit === "all" ||
+        mention.subreddit.toLowerCase() === `r/${selectedSubreddit}`.toLowerCase();
+      const sentimentMatches =
+        sentimentFilter === "all" || mention.sentiment === sentimentFilter;
+      return subredditMatches && sentimentMatches;
+    });
+  }, [recentMentions, selectedSubreddit, sentimentFilter]);
+
+  // Memoized: Apply additional filtering and pagination
+  const { displayedMentions, totalFilteredMentions, hasMoreMentions } = useMemo(() => {
+    let mentions = filteredMentions;
+    
+    if (showFlaggedOnly) {
+      mentions = mentions.filter(m => flaggedIds.includes(m.id));
+    } else if (opportunityFilter) {
+      mentions = mentions.filter(m => m.status === "opportunity");
+    }
+    
+    return {
+      displayedMentions: mentions.slice(0, displayCount),
+      totalFilteredMentions: mentions,
+      hasMoreMentions: mentions.length > displayCount
+    };
+  }, [filteredMentions, flaggedIds, showFlaggedOnly, opportunityFilter, displayCount]);
+
+  // Optimized: Mutations for better UX
+  const flagMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: 'flag' | 'unflag' }) => {
+      await axios.post(apiUrl(`/${action}`), { id });
+      return { id, action };
+    },
+    onMutate: async ({ id, action }) => {
+      // Optimistic update
+      await queryClient.cancelQueries({ queryKey: ["flaggedPosts"] });
+      const previousFlagged = queryClient.getQueryData<string[]>(["flaggedPosts"]);
+      
+      queryClient.setQueryData<string[]>(["flaggedPosts"], (old = []) => {
+        return action === 'flag' 
+          ? [...old, id]
+          : old.filter(flaggedId => flaggedId !== id);
+      });
+      
+      return { previousFlagged };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousFlagged) {
+        queryClient.setQueryData(["flaggedPosts"], context.previousFlagged);
+      }
+    },
+  });
+
+  const subredditMutation = useMutation({
+    mutationFn: async ({ subreddit, action }: { subreddit: string; action: 'add' | 'remove' }) => {
+      if (action === 'add') {
+        const response = await fetch(apiUrl('/monitored-subreddits'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subreddit }),
+        });
+        return await response.json();
+      } else {
+        const response = await fetch(apiUrl(`/monitored-subreddits/${subreddit.replace(/^r\//i, "")}`), {
+          method: 'DELETE',
+        });
+        return await response.json();
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["monitoredSubreddits"] });
+      queryClient.invalidateQueries({ queryKey: ["recentMentions"] });
+    },
+  });
+
+  const keywordMutation = useMutation({
+    mutationFn: async ({ keyword, action }: { keyword: string; action: 'add' | 'remove' }) => {
+      if (action === 'add') {
+        const response = await fetch(apiUrl('/keywords'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword }),
+        });
+        return await response.json();
+      } else {
+        const response = await fetch(apiUrl(`/keywords/${encodeURIComponent(keyword)}`), {
+          method: 'DELETE',
+        });
+        return await response.json();
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["keywords"] });
+      queryClient.invalidateQueries({ queryKey: ["recentMentions"] });
+    },
+  });
+
+  // Optimized handlers with useCallback
+  const handleLoadMore = useCallback(() => {
+    setIsLoadingMore(true);
+    setTimeout(() => {
+      setDisplayCount(prev => prev + 25);
+      setIsLoadingMore(false);
+    }, 200); // Reduced delay
   }, []);
 
-  // Compute monitored subreddits dynamically from recentMentions
-  const computedMonitoredSubreddits = Object.values(
-    recentMentions.reduce((acc, mention) => {
-      const name = mention.subreddit;
-      if (!acc[name]) {
-        acc[name] = { name, mentions: 0 };
-      }
-      acc[name].mentions += 1;
-      return acc;
-    }, {} as Record<string, { name: string; mentions: number }>)
-  ) as Array<{ name: string; mentions: number }>;
+  const handleFlagPost = useCallback((id: string) => {
+    const action = flaggedIds.includes(id) ? 'unflag' : 'flag';
+    flagMutation.mutate({ id, action });
+  }, [flaggedIds, flagMutation]);
 
+  const handleAddSubreddit = useCallback(async () => {
+    const sub = subredditInput.trim();
+    if (sub && !backendSubreddits.includes(sub)) {
+      setSubredditInput("");
+      subredditMutation.mutate({ subreddit: sub, action: 'add' });
+    }
+  }, [subredditInput, backendSubreddits, subredditMutation]);
+
+  const handleRemoveSubreddit = useCallback((subreddit: string) => {
+    subredditMutation.mutate({ subreddit, action: 'remove' });
+  }, [subredditMutation]);
+
+  const handleAddKeyword = useCallback(() => {
+    const keyword = keywordInput.trim();
+    if (keyword && !keywords.includes(keyword)) {
+      setKeywordInput("");
+      keywordMutation.mutate({ keyword, action: 'add' });
+    }
+  }, [keywordInput, keywords, keywordMutation]);
+
+  const handleRemoveKeyword = useCallback((keyword: string) => {
+    keywordMutation.mutate({ keyword, action: 'remove' });
+  }, [keywordMutation]);
+
+  // Reset display count when filters change
+  useEffect(() => {
+    setDisplayCount(25);
+  }, [selectedSubreddit, sentimentFilter, showFlaggedOnly, opportunityFilter]);
+
+  // Utility functions (moved outside render for better performance)
   const getSentimentColor = (sentiment: string, score: number) => {
     if (sentiment === "positive") return "text-success";
     if (sentiment === "negative") return "text-destructive";
@@ -89,221 +256,7 @@ const SentimentMonitor = () => {
     return <Clock className="h-4 w-4 text-muted-foreground" />;
   };
 
-  const filteredMentions = recentMentions.filter((mention) => {
-    const subredditMatches =
-      selectedSubreddit === "all" ||
-      mention.subreddit.toLowerCase() === `r/${selectedSubreddit}`.toLowerCase();
-    const sentimentMatches =
-      sentimentFilter === "all" || mention.sentiment === sentimentFilter;
-    return subredditMatches && sentimentMatches;
-  });
-
-  // Apply additional filtering (flagged/opportunities) and pagination
-  const getDisplayedMentions = () => {
-    let mentions = filteredMentions;
-    
-    if (showFlaggedOnly) {
-      mentions = mentions.filter(m => flaggedIds.includes(m.id));
-    } else if (opportunityFilter) {
-      mentions = mentions.filter(m => m.status === "opportunity");
-    }
-    
-    return mentions.slice(0, displayCount);
-  };
-
-  const displayedMentions = getDisplayedMentions();
-  
-  // Calculate the total filtered mentions count for pagination
-  const getTotalFilteredMentions = () => {
-    let mentions = filteredMentions;
-    
-    if (showFlaggedOnly) {
-      mentions = mentions.filter(m => flaggedIds.includes(m.id));
-    } else if (opportunityFilter) {
-      mentions = mentions.filter(m => m.status === "opportunity");
-    }
-    
-    return mentions;
-  };
-
-  const totalFilteredMentions = getTotalFilteredMentions();
-  const hasMoreMentions = totalFilteredMentions.length > displayCount;
-
-  // Function to load more posts
-  const handleLoadMore = () => {
-    setIsLoadingMore(true);
-    // Simulate loading delay for better UX
-    setTimeout(() => {
-      setDisplayCount(prev => prev + 25);
-      setIsLoadingMore(false);
-    }, 300);
-  };
-
-  // Reset display count when filters change
-  useEffect(() => {
-    setDisplayCount(25);
-  }, [selectedSubreddit, sentimentFilter, showFlaggedOnly, opportunityFilter]);
-
-  // Reset selectedSubreddit to 'all' if it's not present in monitoredSubreddits
-  if (
-    selectedSubreddit !== "all" &&
-    !computedMonitoredSubreddits.some(sub => sub.name.toLowerCase() === `r/${selectedSubreddit}`.toLowerCase())
-  ) {
-    setSelectedSubreddit("all");
-  }
-
-  // Function to flag a post
-  const flagPost = async (id: string) => {
-    await axios.post(apiUrl("/flag"), { id });
-    setFlaggedIds(prev => [...prev, id]);
-  };
-
-  // Function to unflag a post
-  const unflagPost = async (id: string) => {
-    await axios.post(apiUrl("/unflag"), { id });
-    setFlaggedIds(prev => prev.filter(flaggedId => flaggedId !== id));
-  };
-
-  // Add subreddit to backend
-  async function addSubredditToBackend(subreddit: string) {
-    try {
-      const response = await fetch(apiUrl('/monitored-subreddits'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subreddit }),
-      });
-      return await response.json();
-    } catch (err) {
-      return { success: false, error: 'Network error' };
-    }
-  }
-
-  // Remove subreddit from backend
-  async function removeSubredditFromBackend(subreddit: string) {
-    try {
-      const response = await fetch(apiUrl(`/monitored-subreddits/${subreddit.replace(/^r\//i, "")}`), {
-        method: 'DELETE',
-      });
-      return await response.json();
-    } catch (err) {
-      return { success: false, error: 'Network error' };
-    }
-  }
-
-  // Fetch monitored subreddits from backend on mount and after add/remove
-  const fetchMonitoredSubreddits = async () => {
-    try {
-      const res = await fetch(apiUrl('/monitored-subreddits'));
-      const data = await res.json();
-      setBackendSubreddits(data);
-    } catch {
-      setBackendSubreddits([]);
-    }
-  };
-
-  // Fetch monitored subreddits on component mount
-  useEffect(() => {
-    fetchMonitoredSubreddits();
-  }, []);
-
-  // Keywords management functions
-  const fetchKeywords = async () => {
-    try {
-      const res = await fetch(apiUrl('/keywords'));
-      const data = await res.json();
-      setKeywords(data);
-    } catch (error) {
-      console.error('Failed to fetch keywords:', error);
-    }
-  };
-
-  const addKeywordToBackend = async (keyword: string) => {
-    try {
-      const response = await fetch(apiUrl('/keywords'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword }),
-      });
-      return await response.json();
-    } catch (error) {
-      return { success: false, error: 'Network error' };
-    }
-  };
-
-  const removeKeywordFromBackend = async (keyword: string) => {
-    try {
-      const response = await fetch(apiUrl(`/keywords/${encodeURIComponent(keyword)}`), {
-        method: 'DELETE',
-      });
-      return await response.json();
-    } catch (error) {
-      return { success: false, error: 'Network error' };
-    }
-  };
-
-  // Fetch keywords on component mount
-  useEffect(() => {
-    fetchKeywords();
-  }, []);
-
-  const handleAddSubreddit = async () => {
-    const sub = subredditInput.trim();
-    if (sub && !backendSubreddits.includes(sub)) {
-      const result = await addSubredditToBackend(sub);
-      if (result.success) {
-        setSubredditInput("");
-        recentMentionsQuery.refetch(); // Refetch mentions after adding
-        fetchMonitoredSubreddits(); // Refetch backend subreddits
-      } else {
-        alert(result.error || 'Failed to add subreddit');
-      }
-    }
-  };
-
-  const handleRemoveSubreddit = async (subreddit: string) => {
-    const result = await removeSubredditFromBackend(subreddit);
-    if (result.success) {
-      recentMentionsQuery.refetch(); // Refetch mentions after removing
-      fetchMonitoredSubreddits(); // Refetch backend subreddits
-    } else {
-      alert(result.error || 'Failed to remove subreddit');
-    }
-  };
-
-  const handleAddKeyword = async () => {
-    const keyword = keywordInput.trim();
-    if (keyword && !keywords.includes(keyword)) {
-      const result = await addKeywordToBackend(keyword);
-      if (result.success) {
-        setKeywordInput("");
-        // Update local state immediately to prevent flicker
-        setKeywords(prev => [...prev, keyword]);
-        // Refetch mentions after adding keyword
-        recentMentionsQuery.refetch();
-      } else {
-        alert(result.error || 'Failed to add keyword');
-      }
-    }
-  };
-
-  const handleRemoveKeyword = async (keyword: string) => {
-    const result = await removeKeywordFromBackend(keyword);
-    if (result.success) {
-      // Update local state immediately to prevent flicker
-      setKeywords(prev => prev.filter(k => k !== keyword));
-      // Refetch mentions after removing keyword
-      recentMentionsQuery.refetch();
-    } else {
-      alert(result.error || 'Failed to remove keyword');
-    }
-  };
-
-  // Only use backend subreddits for display, with mention counts
-  const allMonitoredSubreddits = backendSubreddits.map(sub => {
-    const subredditName = `r/${sub.replace(/^r\//i, "")}`;
-    const mentions = recentMentions.filter(m => m.subreddit.toLowerCase() === subredditName.toLowerCase()).length;
-    return { name: subredditName, mentions };
-  });
+  const isLoading = recentMentionsQuery.isLoading || subredditsQuery.isLoading || keywordsQuery.isLoading;
 
   return (
     <div className="space-y-6">
@@ -375,14 +328,20 @@ const SentimentMonitor = () => {
                   onChange={e => setSubredditInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") handleAddSubreddit(); }}
                 />
-                <Button variant="default" onClick={handleAddSubreddit}>Add</Button>
+                <Button 
+                  variant="default" 
+                  onClick={handleAddSubreddit}
+                  disabled={subredditMutation.isPending}
+                >
+                  {subredditMutation.isPending ? "Adding..." : "Add"}
+                </Button>
               </div>
               {allMonitoredSubreddits.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
                   <p className="text-sm">No subreddits being monitored</p>
                 </div>
               ) : (
-                allMonitoredSubreddits.map((subreddit, index) => (
+                allMonitoredSubreddits.map((subreddit) => (
                   <div key={subreddit.name} className="flex items-center justify-between p-2 border rounded">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-success rounded-full" />
@@ -391,7 +350,12 @@ const SentimentMonitor = () => {
                         <div className="text-xs text-muted-foreground">{subreddit.mentions} mentions</div>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => handleRemoveSubreddit(subreddit.name)}>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleRemoveSubreddit(subreddit.name)}
+                      disabled={subredditMutation.isPending}
+                    >
                       Remove
                     </Button>
                   </div>
@@ -412,14 +376,20 @@ const SentimentMonitor = () => {
                   onChange={e => setKeywordInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") handleAddKeyword(); }}
                 />
-                <Button variant="default" onClick={handleAddKeyword}>Add</Button>
+                <Button 
+                  variant="default" 
+                  onClick={handleAddKeyword}
+                  disabled={keywordMutation.isPending}
+                >
+                  {keywordMutation.isPending ? "Adding..." : "Add"}
+                </Button>
               </div>
               {keywords.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
                   <p className="text-sm">No keywords configured</p>
                 </div>
               ) : (
-                keywords.map((keyword, index) => (
+                keywords.map((keyword) => (
                   <div key={keyword} className="flex items-center justify-between p-2 border rounded">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-primary rounded-full" />
@@ -427,7 +397,12 @@ const SentimentMonitor = () => {
                         <div className="text-sm font-medium">{keyword}</div>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => handleRemoveKeyword(keyword)}>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleRemoveKeyword(keyword)}
+                      disabled={keywordMutation.isPending}
+                    >
                       Remove
                     </Button>
                   </div>
@@ -448,7 +423,7 @@ const SentimentMonitor = () => {
                     <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Subreddits</SelectItem>
-                      {computedMonitoredSubreddits.map(subreddit => {
+                      {allMonitoredSubreddits.map(subreddit => {
                         const value = subreddit.name.replace(/^r\//i, "");
                         return (
                           <SelectItem key={subreddit.name} value={value}>{subreddit.name}</SelectItem>
@@ -487,7 +462,12 @@ const SentimentMonitor = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {displayedMentions.length === 0 ? (
+              {isLoading ? (
+                <div className="text-center text-muted-foreground py-8">
+                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                  <p className="text-sm">Loading mentions...</p>
+                </div>
+              ) : displayedMentions.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
                   <p className="text-sm">No recent mentions found</p>
                 </div>
@@ -529,7 +509,8 @@ const SentimentMonitor = () => {
                           <Button
                             variant={flaggedIds.includes(mention.id) ? "outline" : "destructive"}
                             size="sm"
-                            onClick={() => flaggedIds.includes(mention.id) ? unflagPost(mention.id) : flagPost(mention.id)}
+                            onClick={() => handleFlagPost(mention.id)}
+                            disabled={flagMutation.isPending}
                           >
                             {flaggedIds.includes(mention.id) ? "Unflag" : "Flag"}
                           </Button>

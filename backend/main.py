@@ -4,7 +4,12 @@ from fastapi import Request
 from supabase import create_client, Client
 from starlette.middleware.sessions import SessionMiddleware
 import os
+from dotenv import load_dotenv
+from functools import lru_cache
+from datetime import datetime, timedelta
 
+# Load environment variables from .env file
+load_dotenv()
 # Try relative imports first (for local development), fall back to absolute (for Railway)
 try:
     from .reddit_utils import get_recent_mentions
@@ -20,49 +25,50 @@ app = FastAPI()
 # Allow frontend to access the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or ["http://localhost:3000"] if you want to restrict
+    allow_origins=[
+        "http://localhost:5173",  # Local development (Vite default)
+        "http://localhost:8081",  # Local development (current frontend port)
+        "http://localhost:8080",
+        "https://reddit-sentiment-managerfrontend-production.up.railway.app",  # Railway deployment
+        "https://cleverbridge.reddit.manager.com"  # Custom domain (when SSL is fixed)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-#@app.get("/recent-mentions")
-# def get_recent_mentions():
-#     return [
-#         {
-#             "id": 1,
-#             "subreddit": "r/technology",
-#             "title": "Anyone using AI tools?",
-#             "author": "techuser123",
-#             "sentiment": "neutral",
-#             "score": 0.1,
-#             "upvotes": 45,
-#             "comments": 12,
-#             "timeAgo": "23m ago",
-#             "status": "neutral",
-#             "keywords": ["AI", "tools", "recommendation"]
-#         }
-#     ]
-
-
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Cache for optimizing repeated queries
+@lru_cache(maxsize=32)
+def get_cached_subreddits():
+    """Cache subreddits for 5 minutes"""
+    result = supabase.table("monitored_subreddits").select("name").execute()
+    return [row["name"] for row in result.data] if result.data else []
 
+@lru_cache(maxsize=32)
+def get_cached_keywords():
+    """Cache keywords for 5 minutes"""
+    keywords_result = supabase.table("keywords").select("name").execute()
+    return [row["name"] for row in keywords_result.data] if keywords_result.data else ["Cleverbridge", "Merchant of Record", "MoR", "scaling"]
 
+# Add cache invalidation endpoint
+@app.post("/cache/clear")
+def clear_cache():
+    """Clear the cache when data is updated"""
+    get_cached_subreddits.cache_clear()
+    get_cached_keywords.cache_clear()
+    return {"success": True}
 
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY"))
 
 @app.get("/recent-mentions")
 def recent_mentions():
-    # Fetch monitored subreddits from Supabase
-    result = supabase.table("monitored_subreddits").select("name").execute()
-    subreddits = [row["name"] for row in result.data] if result.data else []
-    
-    # Fetch keywords from Supabase
-    keywords_result = supabase.table("keywords").select("name").execute()
-    keywords = [row["name"] for row in keywords_result.data] if keywords_result.data else ["Cleverbridge", "Merchant of Record", "MoR", "scaling"]
+    # Use cached data for better performance
+    subreddits = get_cached_subreddits()
+    keywords = get_cached_keywords()
     
     results = get_recent_mentions(subreddits, keywords=keywords, limit=25)
     results = analyze_sentiment(results)  # Add sentiment and score to each post
@@ -98,6 +104,8 @@ async def add_monitored_subreddit(request: Request):
     subreddit = data.get("subreddit")
     if subreddit:
         supabase.table("monitored_subreddits").insert({"name": subreddit}).execute()
+        # Clear cache after modification
+        get_cached_subreddits.cache_clear()
         return {"success": True}
     return {"success": False, "error": "Missing subreddit"}
 
@@ -105,6 +113,8 @@ async def add_monitored_subreddit(request: Request):
 def remove_monitored_subreddit(subreddit: str):
     # Case-insensitive match for subreddit name
     result = supabase.table("monitored_subreddits").delete().ilike("name", subreddit).execute()
+    # Clear cache after modification
+    get_cached_subreddits.cache_clear()
     # Always return success if request completes
     return {"success": True}
 
@@ -121,6 +131,8 @@ async def add_keyword(request: Request):
     keyword = data.get("keyword")
     if keyword:
         supabase.table("keywords").insert({"name": keyword}).execute()
+        # Clear cache after modification
+        get_cached_keywords.cache_clear()
         return {"success": True}
     return {"success": False, "error": "Missing keyword"}
 
@@ -128,6 +140,8 @@ async def add_keyword(request: Request):
 def remove_keyword(keyword: str):
     # Case-insensitive match for keyword name
     result = supabase.table("keywords").delete().ilike("name", keyword).execute()
+    # Clear cache after modification
+    get_cached_keywords.cache_clear()
     return {"success": True}
 
 @app.get("/keywords")
@@ -138,5 +152,41 @@ def get_keywords():
     if not keywords:
         return ["Cleverbridge", "Merchant of Record", "MoR", "scaling"]
     return keywords
+
+@app.get("/dashboard-data")
+def get_dashboard_data():
+    """Single endpoint that returns all dashboard data to reduce API calls"""
+    try:
+        # Get all data in parallel
+        subreddits = get_cached_subreddits()
+        keywords = get_cached_keywords()
+        
+        # Get flagged posts
+        flagged_result = supabase.table("flagged_posts").select("post_id").execute()
+        flagged_ids = [row["post_id"] for row in flagged_result.data] if flagged_result.data else []
+        
+        # Get recent mentions
+        mentions = get_recent_mentions(subreddits, keywords=keywords, limit=25)
+        mentions = analyze_sentiment(mentions)
+        
+        # Calculate stats
+        avg_score = round(sum(post["score"] for post in mentions) / len(mentions), 2) if mentions else 0.0
+        opportunities = len([m for m in mentions if m.get("status") == "opportunity"])
+        
+        return {
+            "posts": mentions,
+            "average_sentiment": avg_score,
+            "flagged_ids": flagged_ids,
+            "monitored_subreddits": subreddits,
+            "keywords": keywords,
+            "stats": {
+                "total_mentions": len(mentions),
+                "flagged_count": len(flagged_ids),
+                "opportunities": opportunities,
+                "average_sentiment": avg_score
+            }
+        }
+    except Exception as e:
+        return {"error": str(e), "posts": [], "average_sentiment": 0}
 
 app.include_router(reddit_oauth_router)
