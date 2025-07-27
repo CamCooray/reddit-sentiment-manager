@@ -1,25 +1,27 @@
-node_modules
+# Backend files (not needed for frontend deployment)
+backend/
+Dockerfile
+
+# Git and config files
 .git
 .gitignore
 README.md
+ENVIRONMENT.md
+
+# Environment files
 .env
 .env.local
 .env.*.local
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.DS_Store
 *.log
-dist
+
+# OS files
+.DS_Store
+
+# Build artifacts
+node_modules
 dist-ssr
-src/
-public/
-index.html
-package.json
-bun.lockb
-tailwind.config.ts
-vite.config.ts
-tsconfig*.json
-components.json
-eslint.config.js
-postcss.config.js
