@@ -48,9 +48,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const validUsername = import.meta.env.VITE_AUTH_USERNAME;
     const validPassword = import.meta.env.VITE_AUTH_PASSWORD;
     
+    // Debug: Log environment variables (remove in production)
+    console.log('Environment check:', {
+      hasUsername: !!validUsername,
+      hasPassword: !!validPassword,
+      usernameValue: validUsername,
+      passwordValue: validPassword, // Temporary for debugging
+      mode: import.meta.env.MODE,
+      allEnv: Object.keys(import.meta.env)
+    });
+    
     // Check if environment variables are set
     if (!validUsername || !validPassword) {
       console.error('Authentication credentials not configured. Please set VITE_AUTH_USERNAME and VITE_AUTH_PASSWORD environment variables.');
+      console.error('Available env vars:', Object.keys(import.meta.env));
       return false;
     }
     
