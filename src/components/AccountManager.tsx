@@ -8,13 +8,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiUrl } from "@/config/api";
 
 const AccountManager = () => {
   const queryClient = useQueryClient();
   const { data: accounts = [], isLoading, isError } = useQuery({
     queryKey: ["accounts"],
     queryFn: async () => {
-      const res = await fetch("http://localhost:8000/accounts");
+      const res = await fetch(apiUrl("/accounts"));
       if (!res.ok) throw new Error("Failed to fetch accounts");
       return res.json();
     }
@@ -27,7 +28,7 @@ const AccountManager = () => {
   // Mutation for deleting account
   const deleteAccountMutation = useMutation({
     mutationFn: async (accountId: number) => {
-      const res = await fetch(`http://localhost:8000/accounts/${accountId}`, {
+      const res = await fetch(apiUrl(`/accounts/${accountId}`), {
         method: "DELETE"
       });
       if (!res.ok) throw new Error("Failed to delete account");
@@ -43,7 +44,7 @@ const AccountManager = () => {
   // Mutation for updating account status
   const updateStatusMutation = useMutation({
     mutationFn: async ({ accountId, status }: { accountId: number; status: string }) => {
-      const res = await fetch(`http://localhost:8000/accounts/${accountId}/status`, {
+      const res = await fetch(apiUrl(`/accounts/${accountId}/status`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status })
@@ -58,7 +59,7 @@ const AccountManager = () => {
 
   // Handler for connect button
   const handleConnect = () => {
-    window.location.href = "http://localhost:8000/auth/login";
+    window.location.href = apiUrl("/auth/login");
   };
 
   // Handler for cog/settings button
@@ -220,7 +221,7 @@ const AccountManager = () => {
                       variant="outline"
                       size="sm"
                       onClick={async () => {
-                        await fetch(`http://localhost:8000/accounts/${account.id}/refresh_stats`, {
+                        await fetch(apiUrl(`/accounts/${account.id}/refresh_stats`), {
                           method: "POST"
                         });
                         queryClient.invalidateQueries({ queryKey: ["accounts"] });

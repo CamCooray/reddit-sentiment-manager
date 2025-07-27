@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
+import { apiUrl } from "@/config/api";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,10 @@ const SentimentMonitor = () => {
   // State for monitored subreddits from backend
   const [backendSubreddits, setBackendSubreddits] = useState<string[]>([]);
 
+  // State for pagination
+  const [displayCount, setDisplayCount] = useState(25);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
   // State for keywords management
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
@@ -35,7 +40,7 @@ const SentimentMonitor = () => {
   const recentMentionsQuery = useQuery<RecentMentionsResponse>({
     queryKey: ["recentMentions"],
     queryFn: async () => {
-      const res = await axios.get("http://localhost:8000/recent-mentions");
+      const res = await axios.get(apiUrl("/recent-mentions"));
       return res.data as RecentMentionsResponse;
     },
     staleTime: 1000 * 60 * 5,
@@ -47,7 +52,7 @@ const SentimentMonitor = () => {
 
   // Fetch flagged IDs from backend
   useEffect(() => {
-    axios.get<string[]>("http://localhost:8000/flagged")
+    axios.get<string[]>(apiUrl("/flagged"))
       .then(res => setFlaggedIds(res.data))
       .catch(() => setFlaggedIds([]));
   }, []);
@@ -93,6 +98,52 @@ const SentimentMonitor = () => {
     return subredditMatches && sentimentMatches;
   });
 
+  // Apply additional filtering (flagged/opportunities) and pagination
+  const getDisplayedMentions = () => {
+    let mentions = filteredMentions;
+    
+    if (showFlaggedOnly) {
+      mentions = mentions.filter(m => flaggedIds.includes(m.id));
+    } else if (opportunityFilter) {
+      mentions = mentions.filter(m => m.status === "opportunity");
+    }
+    
+    return mentions.slice(0, displayCount);
+  };
+
+  const displayedMentions = getDisplayedMentions();
+  
+  // Calculate the total filtered mentions count for pagination
+  const getTotalFilteredMentions = () => {
+    let mentions = filteredMentions;
+    
+    if (showFlaggedOnly) {
+      mentions = mentions.filter(m => flaggedIds.includes(m.id));
+    } else if (opportunityFilter) {
+      mentions = mentions.filter(m => m.status === "opportunity");
+    }
+    
+    return mentions;
+  };
+
+  const totalFilteredMentions = getTotalFilteredMentions();
+  const hasMoreMentions = totalFilteredMentions.length > displayCount;
+
+  // Function to load more posts
+  const handleLoadMore = () => {
+    setIsLoadingMore(true);
+    // Simulate loading delay for better UX
+    setTimeout(() => {
+      setDisplayCount(prev => prev + 25);
+      setIsLoadingMore(false);
+    }, 300);
+  };
+
+  // Reset display count when filters change
+  useEffect(() => {
+    setDisplayCount(25);
+  }, [selectedSubreddit, sentimentFilter, showFlaggedOnly, opportunityFilter]);
+
   // Reset selectedSubreddit to 'all' if it's not present in monitoredSubreddits
   if (
     selectedSubreddit !== "all" &&
@@ -103,20 +154,20 @@ const SentimentMonitor = () => {
 
   // Function to flag a post
   const flagPost = async (id: string) => {
-    await axios.post("http://localhost:8000/flag", { id });
+    await axios.post(apiUrl("/flag"), { id });
     setFlaggedIds(prev => [...prev, id]);
   };
 
   // Function to unflag a post
   const unflagPost = async (id: string) => {
-    await axios.post("http://localhost:8000/unflag", { id });
+    await axios.post(apiUrl("/unflag"), { id });
     setFlaggedIds(prev => prev.filter(flaggedId => flaggedId !== id));
   };
 
   // Add subreddit to backend
   async function addSubredditToBackend(subreddit: string) {
     try {
-      const response = await fetch('http://localhost:8000/monitored-subreddits', {
+      const response = await fetch(apiUrl('/monitored-subreddits'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subreddit }),
@@ -130,7 +181,7 @@ const SentimentMonitor = () => {
   // Remove subreddit from backend
   async function removeSubredditFromBackend(subreddit: string) {
     try {
-      const response = await fetch(`http://localhost:8000/monitored-subreddits/${subreddit.replace(/^r\//i, "")}`, {
+      const response = await fetch(apiUrl(`/monitored-subreddits/${subreddit.replace(/^r\//i, "")}`), {
         method: 'DELETE',
       });
       return await response.json();
@@ -142,7 +193,7 @@ const SentimentMonitor = () => {
   // Fetch monitored subreddits from backend on mount and after add/remove
   const fetchMonitoredSubreddits = async () => {
     try {
-      const res = await fetch('http://localhost:8000/monitored-subreddits');
+      const res = await fetch(apiUrl('/monitored-subreddits'));
       const data = await res.json();
       setBackendSubreddits(data);
     } catch {
@@ -158,7 +209,7 @@ const SentimentMonitor = () => {
   // Keywords management functions
   const fetchKeywords = async () => {
     try {
-      const res = await fetch('http://localhost:8000/keywords');
+      const res = await fetch(apiUrl('/keywords'));
       const data = await res.json();
       setKeywords(data);
     } catch (error) {
@@ -168,7 +219,7 @@ const SentimentMonitor = () => {
 
   const addKeywordToBackend = async (keyword: string) => {
     try {
-      const response = await fetch('http://localhost:8000/keywords', {
+      const response = await fetch(apiUrl('/keywords'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keyword }),
@@ -181,7 +232,7 @@ const SentimentMonitor = () => {
 
   const removeKeywordFromBackend = async (keyword: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/keywords/${encodeURIComponent(keyword)}`, {
+      const response = await fetch(apiUrl(`/keywords/${encodeURIComponent(keyword)}`), {
         method: 'DELETE',
       });
       return await response.json();
@@ -436,68 +487,84 @@ const SentimentMonitor = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {(showFlaggedOnly
-                ? filteredMentions.filter(m => flaggedIds.includes(m.id))
-                : opportunityFilter
-                  ? filteredMentions.filter(m => m.status === "opportunity")
-                  : filteredMentions
-              ).length === 0 ? (
+              {displayedMentions.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8">
                   <p className="text-sm">No recent mentions found</p>
                 </div>
               ) : (
-                (showFlaggedOnly
-                  ? filteredMentions.filter(m => flaggedIds.includes(m.id))
-                  : opportunityFilter
-                    ? filteredMentions.filter(m => m.status === "opportunity")
-                    : filteredMentions
-                ).map((mention) => (
-                  <div key={mention.id} className="border rounded p-3 space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          {getStatusIcon(mention.status ?? "neutral")}
-                          <Badge variant="outline" className="text-xs">{mention.subreddit}</Badge>
-                          {getSentimentBadge(mention.sentiment, mention.status ?? "")}
-                          <span className="text-xs text-muted-foreground">u/{mention.author ?? "anonymous"}</span>
-                          <span className="text-xs text-[#00ADEF]">{mention.sentiment} ({mention.score})</span>
-                        </div>
-                        <div className="text-sm font-medium mb-1">{mention.title}</div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground mb-1">
-                          <span>{mention.upvotes} upvotes</span>
-                          <span>{mention.comments} comments</span>
-                          <span>{mention.timeAgo}</span>
-                        </div>
-                        {mention.keywords && (
-                          <div className="flex flex-wrap gap-1">
-                            {mention.keywords.map((keyword: string, i: number) => (
-                              <Badge key={i} variant="secondary" className="text-xs">{keyword}</Badge>
-                            ))}
+                <>
+                  {displayedMentions.map((mention) => (
+                    <div key={mention.id} className="border rounded p-3 space-y-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            {getStatusIcon(mention.status ?? "neutral")}
+                            <Badge variant="outline" className="text-xs">{mention.subreddit}</Badge>
+                            {getSentimentBadge(mention.sentiment, mention.status ?? "")}
+                            <span className="text-xs text-muted-foreground">u/{mention.author ?? "anonymous"}</span>
+                            <span className="text-xs text-[#00ADEF]">{mention.sentiment} ({mention.score})</span>
                           </div>
-                        )}
-                      </div>
-                      <div className="flex gap-1 ml-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          asChild
-                        >
-                          <a href={mention.url} target="_blank" rel="noopener noreferrer">View</a>
-                        </Button>
-                        <Button
-                          variant={flaggedIds.includes(mention.id) ? "outline" : "destructive"}
-                          size="sm"
-                          onClick={() => flaggedIds.includes(mention.id) ? unflagPost(mention.id) : flagPost(mention.id)}
-                        >
-                          {flaggedIds.includes(mention.id) ? "Unflag" : "Flag"}
-                        </Button>
-                        <Button variant={mention.status === "opportunity" ? "default" : "outline"} size="sm">
-                          Engage
-                        </Button>
+                          <div className="text-sm font-medium mb-1">{mention.title}</div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mb-1">
+                            <span>{mention.upvotes} upvotes</span>
+                            <span>{mention.comments} comments</span>
+                            <span>{mention.timeAgo}</span>
+                          </div>
+                          {mention.keywords && (
+                            <div className="flex flex-wrap gap-1">
+                              {mention.keywords.map((keyword: string, i: number) => (
+                                <Badge key={i} variant="secondary" className="text-xs">{keyword}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-1 ml-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                          >
+                            <a href={mention.url} target="_blank" rel="noopener noreferrer">View</a>
+                          </Button>
+                          <Button
+                            variant={flaggedIds.includes(mention.id) ? "outline" : "destructive"}
+                            size="sm"
+                            onClick={() => flaggedIds.includes(mention.id) ? unflagPost(mention.id) : flagPost(mention.id)}
+                          >
+                            {flaggedIds.includes(mention.id) ? "Unflag" : "Flag"}
+                          </Button>
+                          <Button variant={mention.status === "opportunity" ? "default" : "outline"} size="sm">
+                            Engage
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                  
+                  {/* View More Button */}
+                  {hasMoreMentions && (
+                    <div className="flex justify-center pt-4">
+                      <Button
+                        variant="outline"
+                        onClick={handleLoadMore}
+                        disabled={isLoadingMore}
+                        className="flex items-center gap-2"
+                      >
+                        {isLoadingMore ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-4 w-4" />
+                            View More ({totalFilteredMentions.length - displayCount} remaining)
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

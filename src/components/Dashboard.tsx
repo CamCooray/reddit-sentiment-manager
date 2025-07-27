@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { apiUrl } from "@/config/api";
 
 import {
   TrendingUp, TrendingDown, Users, MessageCircle,
@@ -21,7 +22,7 @@ const Dashboard = () => {
   const [recentMentions, setRecentMentions] = useState<any[]>([]);
 
   useEffect(() => {
-    axios.get("http://localhost:8000/recent-mentions")
+    axios.get(apiUrl("/recent-mentions"))
       .then((res) => {
         setRecentMentions(Array.isArray(res.data) ? res.data : []);
       })
