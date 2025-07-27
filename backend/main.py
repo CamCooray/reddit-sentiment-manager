@@ -52,7 +52,11 @@ def recent_mentions():
     # Fetch monitored subreddits from Supabase
     result = supabase.table("monitored_subreddits").select("name").execute()
     subreddits = [row["name"] for row in result.data] if result.data else []
-    keywords = ["Cleverbridge", "Merchant of Record", "MoR", "scaling"]
+    
+    # Fetch keywords from Supabase
+    keywords_result = supabase.table("keywords").select("name").execute()
+    keywords = [row["name"] for row in keywords_result.data] if keywords_result.data else ["Cleverbridge", "Merchant of Record", "MoR", "scaling"]
+    
     results = get_recent_mentions(subreddits, keywords=keywords, limit=25)
     results = analyze_sentiment(results)  # Add sentiment and score to each post
     # Calculate average sentiment score
@@ -102,5 +106,30 @@ def get_monitored_subreddits():
     result = supabase.table("monitored_subreddits").select("name").execute()
     subreddits = [row["name"] for row in result.data]
     return subreddits
+
+# Keywords management endpoints
+@app.post("/keywords")
+async def add_keyword(request: Request):
+    data = await request.json()
+    keyword = data.get("keyword")
+    if keyword:
+        supabase.table("keywords").insert({"name": keyword}).execute()
+        return {"success": True}
+    return {"success": False, "error": "Missing keyword"}
+
+@app.delete("/keywords/{keyword}")
+def remove_keyword(keyword: str):
+    # Case-insensitive match for keyword name
+    result = supabase.table("keywords").delete().ilike("name", keyword).execute()
+    return {"success": True}
+
+@app.get("/keywords")
+def get_keywords():
+    result = supabase.table("keywords").select("name").execute()
+    keywords = [row["name"] for row in result.data]
+    # Return default keywords if none are stored in database
+    if not keywords:
+        return ["Cleverbridge", "Merchant of Record", "MoR", "scaling"]
+    return keywords
 
 app.include_router(reddit_oauth_router)

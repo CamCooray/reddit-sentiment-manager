@@ -28,6 +28,10 @@ const SentimentMonitor = () => {
   // State for monitored subreddits from backend
   const [backendSubreddits, setBackendSubreddits] = useState<string[]>([]);
 
+  // State for keywords management
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState("");
+
   const recentMentionsQuery = useQuery<RecentMentionsResponse>({
     queryKey: ["recentMentions"],
     queryFn: async () => {
@@ -146,8 +150,49 @@ const SentimentMonitor = () => {
     }
   };
 
+  // Fetch monitored subreddits on component mount
   useEffect(() => {
     fetchMonitoredSubreddits();
+  }, []);
+
+  // Keywords management functions
+  const fetchKeywords = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/keywords');
+      const data = await res.json();
+      setKeywords(data);
+    } catch (error) {
+      console.error('Failed to fetch keywords:', error);
+    }
+  };
+
+  const addKeywordToBackend = async (keyword: string) => {
+    try {
+      const response = await fetch('http://localhost:8000/keywords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword }),
+      });
+      return await response.json();
+    } catch (error) {
+      return { success: false, error: 'Network error' };
+    }
+  };
+
+  const removeKeywordFromBackend = async (keyword: string) => {
+    try {
+      const response = await fetch(`http://localhost:8000/keywords/${encodeURIComponent(keyword)}`, {
+        method: 'DELETE',
+      });
+      return await response.json();
+    } catch (error) {
+      return { success: false, error: 'Network error' };
+    }
+  };
+
+  // Fetch keywords on component mount
+  useEffect(() => {
+    fetchKeywords();
   }, []);
 
   const handleAddSubreddit = async () => {
@@ -174,6 +219,34 @@ const SentimentMonitor = () => {
     }
   };
 
+  const handleAddKeyword = async () => {
+    const keyword = keywordInput.trim();
+    if (keyword && !keywords.includes(keyword)) {
+      const result = await addKeywordToBackend(keyword);
+      if (result.success) {
+        setKeywordInput("");
+        // Update local state immediately to prevent flicker
+        setKeywords(prev => [...prev, keyword]);
+        // Refetch mentions after adding keyword
+        recentMentionsQuery.refetch();
+      } else {
+        alert(result.error || 'Failed to add keyword');
+      }
+    }
+  };
+
+  const handleRemoveKeyword = async (keyword: string) => {
+    const result = await removeKeywordFromBackend(keyword);
+    if (result.success) {
+      // Update local state immediately to prevent flicker
+      setKeywords(prev => prev.filter(k => k !== keyword));
+      // Refetch mentions after removing keyword
+      recentMentionsQuery.refetch();
+    } else {
+      alert(result.error || 'Failed to remove keyword');
+    }
+  };
+
   // Only use backend subreddits for display, with mention counts
   const allMonitoredSubreddits = backendSubreddits.map(sub => {
     const subredditName = `r/${sub.replace(/^r\//i, "")}`;
@@ -187,47 +260,86 @@ const SentimentMonitor = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold">{recentMentions.length}</div><div className="text-sm text-muted-foreground">Total Mentions</div></div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold text-destructive">{flaggedIds.length}</div><div className="text-sm text-muted-foreground">Flagged</div></div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold text-success">0</div><div className="text-sm text-muted-foreground">Opportunities</div></div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold text-success">{recentMentions.filter(m => m.status === "opportunity").length}</div><div className="text-sm text-muted-foreground">Opportunities</div></div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold">{average_sentiment}</div><div className="text-sm text-muted-foreground">Avg Sentiment</div></div></CardContent></Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Monitored Subreddits (optional, still static) */}
-        <Card>
-          <CardHeader><CardTitle className="text-base">Monitored Subreddits</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex gap-2 mb-4">
-              <input
-                className="border rounded px-2 py-1 w-full bg-gray-800 text-white placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary"
-                placeholder="Add subreddit (e.g. SaaS)"
-                value={subredditInput}
-                onChange={e => setSubredditInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") handleAddSubreddit(); }}
-              />
-              <Button variant="default" onClick={handleAddSubreddit}>Add</Button>
-            </div>
-            {allMonitoredSubreddits.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                <p className="text-sm">No subreddits being monitored</p>
+        {/* Left Column - Monitored Subreddits and Keywords */}
+        <div className="space-y-6">
+          {/* Monitored Subreddits */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Monitored Subreddits</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex gap-2 mb-4">
+                <input
+                  className="border rounded px-2 py-1 w-full bg-gray-800 text-white placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary"
+                  placeholder="Add subreddit (e.g. SaaS)"
+                  value={subredditInput}
+                  onChange={e => setSubredditInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleAddSubreddit(); }}
+                />
+                <Button variant="default" onClick={handleAddSubreddit}>Add</Button>
               </div>
-            ) : (
-              allMonitoredSubreddits.map((subreddit, index) => (
-                <div key={subreddit.name} className="flex items-center justify-between p-2 border rounded">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-success rounded-full" />
-                    <div>
-                      <div className="text-sm font-medium">{subreddit.name}</div>
-                      <div className="text-xs text-muted-foreground">{subreddit.mentions} mentions</div>
-                    </div>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => handleRemoveSubreddit(subreddit.name)}>
-                    Remove
-                  </Button>
+              {allMonitoredSubreddits.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  <p className="text-sm">No subreddits being monitored</p>
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+              ) : (
+                allMonitoredSubreddits.map((subreddit, index) => (
+                  <div key={subreddit.name} className="flex items-center justify-between p-2 border rounded">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-success rounded-full" />
+                      <div>
+                        <div className="text-sm font-medium">{subreddit.name}</div>
+                        <div className="text-xs text-muted-foreground">{subreddit.mentions} mentions</div>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleRemoveSubreddit(subreddit.name)}>
+                      Remove
+                    </Button>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Keywords Management */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Search Keywords</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex gap-2 mb-4">
+                <input
+                  className="border rounded px-2 py-1 w-full bg-gray-800 text-white placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary"
+                  placeholder="Add keyword (e.g. payment)"
+                  value={keywordInput}
+                  onChange={e => setKeywordInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleAddKeyword(); }}
+                />
+                <Button variant="default" onClick={handleAddKeyword}>Add</Button>
+              </div>
+              {keywords.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  <p className="text-sm">No keywords configured</p>
+                </div>
+              ) : (
+                keywords.map((keyword, index) => (
+                  <div key={keyword} className="flex items-center justify-between p-2 border rounded">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-primary rounded-full" />
+                      <div>
+                        <div className="text-sm font-medium">{keyword}</div>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleRemoveKeyword(keyword)}>
+                      Remove
+                    </Button>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Recent Mentions */}
         <div className="lg:col-span-2">
