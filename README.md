@@ -59,6 +59,27 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- FastAPI (Python backend)
+- Supabase (Database)
+- Reddit API
+
+## Environment Setup & Security
+
+**⚠️ IMPORTANT: Never commit sensitive credentials to git!**
+
+1. Copy the environment template:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Fill in your actual credentials in `.env`:
+   - **Reddit API**: Get credentials from [Reddit Apps](https://www.reddit.com/prefs/apps)
+   - **Supabase**: Get URL and key from your [Supabase Dashboard](https://supabase.com/dashboard)
+   - **Session Secret**: Generate a secure random string
+
+3. The `.env` file is already in `.gitignore` and should never be committed.
+
+4. For production deployment, set environment variables in your hosting platform.
 
 ## How can I deploy this project?
 
