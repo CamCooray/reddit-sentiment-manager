@@ -75,7 +75,17 @@ This project is built with:
 2. Fill in your actual credentials in `.env`:
    - **Reddit API**: Get credentials from [Reddit Apps](https://www.reddit.com/prefs/apps)
    - **Supabase**: Get URL and key from your [Supabase Dashboard](https://supabase.com/dashboard)
-   - **Session Secret**: Generate a secure random string
+   - **Session Secret**: Generate a secure random string using one of these methods:
+     ```bash
+     # Using Python (recommended)
+     python -c "import secrets; print(secrets.token_urlsafe(32))"
+     
+     # Using OpenSSL
+     openssl rand -base64 32
+     
+     # Using Node.js
+     node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+     ```
 
 3. The `.env` file is already in `.gitignore` and should never be committed.
 
