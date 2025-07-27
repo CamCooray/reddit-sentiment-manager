@@ -1,4 +1,3 @@
-# Frontend (Vite + npm) configuration
 [providers]
 node = "18"
 
