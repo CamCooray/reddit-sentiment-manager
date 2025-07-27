@@ -1,12 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
-from reddit_utils import get_recent_mentions
-from sentiment_analysis import analyze_sentiment
 from supabase import create_client, Client
 from starlette.middleware.sessions import SessionMiddleware
 import os
-from reddit_oauth import router as reddit_oauth_router
+
+# Try relative imports first (for local development), fall back to absolute (for Railway)
+try:
+    from .reddit_utils import get_recent_mentions
+    from .sentiment_analysis import analyze_sentiment
+    from .reddit_oauth import router as reddit_oauth_router
+except ImportError:
+    from reddit_utils import get_recent_mentions
+    from sentiment_analysis import analyze_sentiment
+    from reddit_oauth import router as reddit_oauth_router
 
 app = FastAPI()
 
