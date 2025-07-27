@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   TrendingUp, TrendingDown, MessageCircle, ExternalLink,
-  Clock, AlertTriangle, CheckCircle, Users
+  Clock, AlertTriangle, CheckCircle, Users, Flag, Target, Eye
 } from "lucide-react";
 
 // Type for backend response
@@ -255,13 +255,58 @@ const SentimentMonitor = () => {
   });
 
   return (
-    <div className="space-y-6 bg-gray-900 min-h-screen text-white">
+    <div className="space-y-6">
       {/* Stats Overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold">{recentMentions.length}</div><div className="text-sm text-muted-foreground">Total Mentions</div></div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold text-destructive">{flaggedIds.length}</div><div className="text-sm text-muted-foreground">Flagged</div></div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold text-success">{recentMentions.filter(m => m.status === "opportunity").length}</div><div className="text-sm text-muted-foreground">Opportunities</div></div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-center"><div className="text-2xl font-semibold">{average_sentiment}</div><div className="text-sm text-muted-foreground">Avg Sentiment</div></div></CardContent></Card>
+        <Card className="bg-gradient-card border-border/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Mentions</p>
+                <p className="text-2xl font-bold">{recentMentions.length}</p>
+              </div>
+              <Eye className="h-8 w-8 text-primary" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-card border-border/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Flagged</p>
+                <p className="text-2xl font-bold text-destructive">{flaggedIds.length}</p>
+              </div>
+              <Flag className="h-8 w-8 text-destructive" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-card border-border/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Opportunities</p>
+                <p className="text-2xl font-bold text-success">{recentMentions.filter(m => m.status === "opportunity").length}</p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-success" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-card border-border/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Avg Sentiment</p>
+                <p className={`text-2xl font-bold ${average_sentiment > 0 ? 'text-success' : average_sentiment < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {average_sentiment > 0 ? '+' : average_sentiment < 0 ? '-' : ''}{Math.abs(average_sentiment)}
+                </p>
+              </div>
+              <Target className="h-8 w-8 text-success" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -273,7 +318,7 @@ const SentimentMonitor = () => {
             <CardContent className="space-y-2">
               <div className="flex gap-2 mb-4">
                 <input
-                  className="border rounded px-2 py-1 w-full bg-gray-800 text-white placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary"
+                  className="border rounded px-2 py-1 w-full bg-input text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary"
                   placeholder="Add subreddit (e.g. SaaS)"
                   value={subredditInput}
                   onChange={e => setSubredditInput(e.target.value)}
@@ -310,7 +355,7 @@ const SentimentMonitor = () => {
             <CardContent className="space-y-2">
               <div className="flex gap-2 mb-4">
                 <input
-                  className="border rounded px-2 py-1 w-full bg-gray-800 text-white placeholder:text-gray-400 focus:border-primary focus:ring-2 focus:ring-primary"
+                  className="border rounded px-2 py-1 w-full bg-input text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary"
                   placeholder="Add keyword (e.g. payment)"
                   value={keywordInput}
                   onChange={e => setKeywordInput(e.target.value)}
@@ -369,23 +414,23 @@ const SentimentMonitor = () => {
                       <SelectItem value="neutral">Neutral</SelectItem>
                     </SelectContent>
                   </Select>
-                  <div className="flex items-center gap-1 px-2 py-1 border rounded bg-muted">
+                  <div className="flex items-center gap-1 px-2 py-1 border border-border rounded bg-card">
                     <input
                       type="checkbox"
                       checked={showFlaggedOnly}
                       onChange={e => setShowFlaggedOnly(e.target.checked)}
-                      className="accent-destructive"
+                      className="checkbox-destructive"
                     />
-                    <span className="text-xs">Show Flagged Only</span>
+                    <span className="text-xs text-foreground">Show Flagged Only</span>
                   </div>
-                  <div className="flex items-center gap-1 px-2 py-1 border rounded bg-muted">
+                  <div className="flex items-center gap-1 px-2 py-1 border border-border rounded bg-card">
                     <input
                       type="checkbox"
                       checked={opportunityFilter}
                       onChange={e => setOpportunityFilter(e.target.checked)}
-                      className="accent-success"
+                      className="checkbox-success"
                     />
-                    <span className="text-xs">Show Opportunities Only</span>
+                    <span className="text-xs text-foreground">Show Opportunities Only</span>
                   </div>
                 </div>
               </div>

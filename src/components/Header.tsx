@@ -2,7 +2,7 @@ import { TrendingUp } from "lucide-react";
 
 const Header = () => {
   return (
-    <header className="border-b border-border bg-card">
+    <header className="border-b border-border bg-card/50 backdrop-blur-sm">
       <div className="container mx-auto px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <TrendingUp className="h-6 w-6 text-primary" />
