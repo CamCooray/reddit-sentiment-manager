@@ -160,7 +160,6 @@ const Login = () => {
             
             <div className="mt-6 text-center">
               <p className="text-xs text-slate-400">
-                Contact your administrator for access credentials
               </p>
             </div>
           </CardContent>
@@ -168,7 +167,7 @@ const Login = () => {
 
         {/* Footer */}
         <div className="text-center text-xs text-slate-400">
-          Secure internal tool for Reddit monitoring and engagement
+          &copy; {new Date().getFullYear()} Cleverbridge Inc.
         </div>
       </div>
     </div>

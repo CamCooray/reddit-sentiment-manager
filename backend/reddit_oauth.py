@@ -44,17 +44,19 @@ async def auth_callback(request: Request):
     posts_response = await oauth.reddit.get(f"user/{user_info.get('name')}/submitted", token=token)
     posts_data = posts_response.json()
     total_posts = len(posts_data.get("data", {}).get("children", []))
-    # Store token, user_info, karma, and total_posts in Supabase
+    # Store user info, karma, and total_posts in Supabase
+    # NOTE: No refresh tokens stored for security - users re-authenticate as needed
     supabase.table("reddit_accounts").upsert({
         "username": user_info.get("name"),
-        "access_token": token.get("access_token"),
-        "refresh_token": token.get("refresh_token"),
+        "access_token": token.get("access_token"),  # Short-lived only
+        # Refresh token deliberately omitted for security
         "token_type": token.get("token_type"),
         "expires_in": token.get("expires_in"),
         "scope": token.get("scope"),
         "status": "active",
         "karma": karma,
-        "total_posts": total_posts
+        "total_posts": total_posts,
+        "last_connected": "now()"  # Track when user last connected
     }).execute()
     html_content = """
     <html>
